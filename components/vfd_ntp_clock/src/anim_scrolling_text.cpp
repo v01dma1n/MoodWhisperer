@@ -49,8 +49,9 @@ void ScrollingTextAnimation::update() {
     }
 
     ++_currentPosition;
-    // Done when the last character has passed the left edge.
-    if (_currentPosition + cells >= static_cast<int>(_parsedText.size())) {
+    // Done when the last character has passed the left edge (strictly >
+    // so the final step renders a blank frame before stopping).
+    if (_currentPosition + cells > static_cast<int>(_parsedText.size())) {
         _done = true;
     }
 }

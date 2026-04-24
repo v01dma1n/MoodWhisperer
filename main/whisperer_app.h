@@ -71,4 +71,8 @@ private:
     // Rebuild the mood provider based on preferences (called after
     // preferences are loaded and whenever the portal save changes them).
     void refreshMoodProvider();
+
+    // AP trigger hold detection. Non-zero once the button goes low;
+    // reset to 0 on release or after AP mode is requested.
+    int64_t _apTriggerHeldSinceUs = 0;
 };

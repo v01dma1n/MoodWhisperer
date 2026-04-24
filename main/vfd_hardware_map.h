@@ -18,7 +18,11 @@ constexpr int PT6315_GPIO_CS   =  5;  // FL_CS   — VSPI SS
 // VSPI on the classic ESP32 = SPI3_HOST in IDF >= 4.4.
 constexpr spi_host_device_t PT6315_SPI_HOST = SPI3_HOST;
 
-// Optional touch-sensor pad that the user mentioned in the spec.
-// Configured as a simple GPIO input here; swap for `touch_pad_t` if using
-// the ESP32's dedicated touch peripheral. -1 disables the feature.
-constexpr int AP_TRIGGER_GPIO = -1;
+// Hold this GPIO low for 3 s to force AP mode at any time. -1 disables.
+// GPIO 0 = the BOOT button on the ESP32-WROOM dev board (active-low,
+// external 10 k pull-up). We add an internal pull-up as belt-and-suspenders.
+constexpr int AP_TRIGGER_GPIO = 0;
+
+// Built-in blue LED on the ESP32-WROOM dev board. Toggled on every WiFi /
+// IP event so it flashes during connect, DHCP, and NTP activity. -1 disables.
+constexpr int LED_GPIO = 2;

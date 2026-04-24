@@ -5,6 +5,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "driver/gpio.h"
+#include "esp_event.h"
+#include "esp_timer.h"
 #include "esp_wifi.h"
 
 #include <cstdio>
@@ -18,6 +21,22 @@
 // buffer refreshed by the data getter and embedded into the scene's
 // format string with %s. The getter returns UNSET_VALUE for scenes that
 // only care about the side effect.
+
+// One-shot timer that turns the LED off after a brief flash.
+static esp_timer_handle_t s_ledOffTimer = nullptr;
+
+static void ledOffCallback(void*) {
+    gpio_set_level(static_cast<gpio_num_t>(LED_GPIO), 0);
+}
+
+// On every WiFi/IP event: turn LED on and (re)start the off-timer.
+// Rapid bursts keep it lit while active; it goes dark 80 ms after the last event.
+static void ledWifiEventHandler(void*, esp_event_base_t, int32_t, void*) {
+    if (LED_GPIO < 0 || !s_ledOffTimer) return;
+    gpio_set_level(static_cast<gpio_num_t>(LED_GPIO), 1);
+    esp_timer_stop(s_ledOffTimer);
+    esp_timer_start_once(s_ledOffTimer, 80 * 1000ULL);  // 80 ms
+}
 
 static char s_quoteBuffer[48] = "HELLO";
 
@@ -104,6 +123,39 @@ WhispererApp::WhispererApp()
 // --- Hardware & lifecycle ---------------------------------------------------
 
 void WhispererApp::setupHardware() {
+    if (AP_TRIGGER_GPIO >= 0) {
+        gpio_config_t io = {};
+        io.pin_bit_mask = 1ULL << AP_TRIGGER_GPIO;
+        io.mode         = GPIO_MODE_INPUT;
+        io.pull_up_en   = GPIO_PULLUP_ENABLE;
+        io.pull_down_en = GPIO_PULLDOWN_DISABLE;
+        io.intr_type    = GPIO_INTR_DISABLE;
+        gpio_config(&io);
+        LOGINF("AP trigger on GPIO %d (hold 3 s for AP mode)", AP_TRIGGER_GPIO);
+    }
+
+    if (LED_GPIO >= 0) {
+        gpio_config_t io = {};
+        io.pin_bit_mask = 1ULL << LED_GPIO;
+        io.mode         = GPIO_MODE_OUTPUT;
+        io.pull_up_en   = GPIO_PULLUP_DISABLE;
+        io.pull_down_en = GPIO_PULLDOWN_DISABLE;
+        io.intr_type    = GPIO_INTR_DISABLE;
+        gpio_config(&io);
+        gpio_set_level(static_cast<gpio_num_t>(LED_GPIO), 0);
+
+        esp_timer_create_args_t ta = {};
+        ta.callback = ledOffCallback;
+        ta.name     = "led_off";
+        esp_timer_create(&ta, &s_ledOffTimer);
+
+        esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
+                                   ledWifiEventHandler, nullptr);
+        esp_event_handler_register(IP_EVENT,   ESP_EVENT_ANY_ID,
+                                   ledWifiEventHandler, nullptr);
+        LOGINF("WiFi activity LED on GPIO %d", LED_GPIO);
+    }
+
     _displayManager->begin();
     _display.setBrightness(static_cast<uint8_t>(_appPrefs.config.displayBrightness));
 
@@ -132,8 +184,20 @@ void WhispererApp::setup() {
 
 void WhispererApp::loop() {
     BaseNtpClockApp::loop();
-    // Nothing VFDWhisperer-specific per tick; the engine handles the
-    // FSM + scene manager and the quote refresh happens at scene start.
+
+    if (AP_TRIGGER_GPIO >= 0 && _fsmManager && !_fsmManager->isInState("AP_MODE")) {
+        if (gpio_get_level((gpio_num_t)AP_TRIGGER_GPIO) == 0) {
+            if (_apTriggerHeldSinceUs == 0)
+                _apTriggerHeldSinceUs = esp_timer_get_time();
+            else if (esp_timer_get_time() - _apTriggerHeldSinceUs >= 3'000'000) {
+                LOGINF("AP trigger held 3 s — requesting AP mode");
+                _apTriggerHeldSinceUs = 0;
+                _fsmManager->requestApMode();
+            }
+        } else {
+            _apTriggerHeldSinceUs = 0;
+        }
+    }
 }
 
 // --- MoodProvider selection -------------------------------------------------

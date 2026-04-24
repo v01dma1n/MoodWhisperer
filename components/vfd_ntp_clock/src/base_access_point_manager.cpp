@@ -3,6 +3,7 @@
 #include "base_access_point_manager.h"
 #include "base_preferences.h"
 #include "display_manager.h"
+#include "anim_scrolling_text.h"
 #include "tz_data.h"
 #include "logging.h"
 #include "wifi_connector.h"
@@ -628,21 +629,25 @@ bool BaseAccessPointManager::applyFormBody(const char* body, size_t len) {
 
 // --- Blocking loop for the app ---------------------------------------------
 
-void BaseAccessPointManager::runBlockingLoop(DisplayManager& /*display*/,
+void BaseAccessPointManager::runBlockingLoop(DisplayManager& display,
                                              const char* waitingMsg,
                                              const char* connectedMsg) {
     LOGINF("AP waiting banner: %s", waitingMsg ? waitingMsg : "");
 
-    // The DisplayManager is updated by the caller's task; we just spin
-    // here until save() restarts us. A real implementation might switch
-    // the scrolling animation text from `waitingMsg` to `connectedMsg`
-    // the first time a client hits "/".
     bool announced = false;
     TickType_t lastDump = xTaskGetTickCount();
     while (true) {
+        // Drive the display animation from this task — the main loop is
+        // blocked here so nobody else is calling display.update().
+        display.update();
+
         if (!announced && _isClientConnected) {
             LOGINF("AP connected banner: %s", connectedMsg ? connectedMsg : "");
             announced = true;
+            if (connectedMsg) {
+                display.setAnimation(std::make_unique<ScrollingTextAnimation>(
+                    connectedMsg, 180, false));
+            }
         }
 
         TickType_t now = xTaskGetTickCount();
@@ -664,6 +669,6 @@ void BaseAccessPointManager::runBlockingLoop(DisplayManager& /*display*/,
             LOGINF("--- end watermarks ---");
         }
 
-        vTaskDelay(pdMS_TO_TICKS(200));
+        vTaskDelay(pdMS_TO_TICKS(20));
     }
 }

@@ -105,11 +105,12 @@ void SceneManager::startCurrentScene() {
 }
 
 void SceneManager::update() {
+    // Tick the display unconditionally so animations set before the FSM
+    // reaches RUNNING_NORMAL (e.g. the startup greeting) are actually shown.
+    _app.getClock().update();
+
     if (!_app.isOkToRunScenes()) return;
     if (!_scenePlaylist || _numScenes <= 0) return;
-
-    // Always advance the currently-installed animation.
-    _app.getClock().update();
 
     // Lazy first-start: begin playing when update() is called for the
     // first time after setup().
