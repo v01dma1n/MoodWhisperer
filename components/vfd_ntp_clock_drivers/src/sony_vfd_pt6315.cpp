@@ -107,30 +107,19 @@ void SonyVfdPt6315::sendCommand(uint8_t cmd) {
 }
 
 void SonyVfdPt6315::writeRamToDevice() {
-    // Auto-increment: send address command, then all 36 RAM bytes in one CS.
-    // IDF doesn't let us hold CS across multiple transactions easily without
-    // DMA wrangling, so we emit the address + bytes back to back. Works in
-    // practice because spi_device_acquire_bus keeps CS asserted for the
-    // duration of the transactions between acquire and release.
-    spi_device_acquire_bus(_dev, portMAX_DELAY);
-
-    spi_transaction_t addrTx = {};
-    uint8_t addr = reverseBits(SonyVfdConst::CMD_ADDR_BASE);
-    addrTx.length    = 8;
-    addrTx.tx_buffer = &addr;
-    spi_device_polling_transmit(_dev, &addrTx);
-
-    // Reverse all RAM bytes into a scratch buffer and send in one shot.
-    uint8_t scratch[SonyVfdConst::RAM_SIZE];
+    // The PT6315 requires the address byte and all data bytes in ONE CS
+    // transaction. A second CS edge resets the chip's command decoder, so
+    // splitting across two transactions makes the data bytes look like
+    // commands. Build a single scratch buffer: [addr, d0..d35].
+    uint8_t scratch[1 + SonyVfdConst::RAM_SIZE];
+    scratch[0] = reverseBits(SonyVfdConst::CMD_ADDR_BASE);
     for (int i = 0; i < SonyVfdConst::RAM_SIZE; ++i) {
-        scratch[i] = reverseBits(_ram[i]);
+        scratch[1 + i] = reverseBits(_ram[i]);
     }
-    spi_transaction_t dataTx = {};
-    dataTx.length    = SonyVfdConst::RAM_SIZE * 8;
-    dataTx.tx_buffer = scratch;
-    spi_device_polling_transmit(_dev, &dataTx);
-
-    spi_device_release_bus(_dev);
+    spi_transaction_t t = {};
+    t.length    = (1 + SonyVfdConst::RAM_SIZE) * 8;
+    t.tx_buffer = scratch;
+    spi_device_transmit(_dev, &t);
 }
 
 void SonyVfdPt6315::sendDisplayControl() {

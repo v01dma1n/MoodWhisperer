@@ -55,7 +55,9 @@ static const int s_numLogLevelOptions =
 
 // Storage for the string view of logLevel that the form round-trips through.
 // FormField pref.str_pref points here; applyFormBody() parses back to enum.
-static char s_logLevelBuffer[4] = "1";
+// Must be MAX_PREF_STRING_LEN bytes — applyFormBody() calls strncpy with
+// MAX_PREF_STRING_LEN-1 and assumes all str_pref buffers are that size.
+static char s_logLevelBuffer[MAX_PREF_STRING_LEN] = "1";
 
 // --- Lifecycle --------------------------------------------------------------
 

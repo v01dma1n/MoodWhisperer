@@ -44,15 +44,20 @@ This wipes WiFi credentials — the device will come up in AP mode
   no marketing words, no "comprehensive solution" phrasing.
 
 ## Known issues / in flight
-- Core 1 idle-task panic (PC=0, InstrFetchProhibited) — ROOT CAUSE FOUND.
-  Xtensa uses the interrupted task's stack for interrupt handlers. In AP
-  mode the IDLE1 task (default 1536-byte stack) had only ~976 bytes free;
-  WiFi level-1 interrupts firing on Core 1 while IDLE1 was in waiti 0
-  overflowed that stack, corrupted the adjacent IPC task memory, and crashed
-  with PC=0. Fix: CONFIG_FREERTOS_IDLE_TASK_STACKSIZE=4096 in
-  sdkconfig.defaults. Verified: IDLE1 free stays at 3648 bytes in AP mode.
-  The "dns_hijack pinned to core 0" comment in startDnsResponder was a
-  prior partial fix for the same symptom; the root cause was the idle stack.
+- Core 1 idle-task panic (PC=0, InstrFetchProhibited) — TWO STACK FIXES APPLIED.
+  Crash signature: PS.EXCM=1 (double exception), A1/A3 in IPC task memory,
+  _xt_lowint1 + _frxt_int_enter in registers, backtrace landing in idle task
+  frames (red herring from stale Xtensa window-chain saves).
+  Fix 1: CONFIG_FREERTOS_IDLE_TASK_STACKSIZE=4096 — IDLE1 had only 976 bytes
+  free in AP mode; WiFi level-1 interrupts on Core 1 could overflow it. Fixed
+  but did NOT eliminate the crash; crash still occurred after AP config save
+  (WiFi STA connect path), meaning a second culprit existed.
+  Fix 2: CONFIG_ESP_IPC_TASK_STACK_SIZE=4096 — ipc1 had only 1520 bytes free
+  (2048 total); WiFi STA-connect IPC calls pushed it past the limit. The
+  overflow corrupted adjacent memory and the next level-1 interrupt dispatched
+  through a zeroed handler → PC=0. Fix raises headroom to 3580 bytes free.
+  Pending validation: configure WiFi credentials through the portal and
+  verify the device survives the STA-connect boot.
 - DIG1 top-row annunciator bit mapping is placeholder (marked TODO in
   sony_vfd_pt6315.cpp). Needs bench bit-walk.
 
