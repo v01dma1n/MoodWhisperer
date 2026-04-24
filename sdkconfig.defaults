@@ -1,0 +1,65 @@
+# VFDWhisperer sdkconfig defaults.
+# These are the minimum non-default settings the firmware expects.
+# Apply with:  idf.py reconfigure  (first build picks them up automatically).
+
+# --- Target ------------------------------------------------------------------
+CONFIG_IDF_TARGET="esp32"
+
+# --- Main task stack ---------------------------------------------------------
+# The app task runs app logic, WiFi, NTP, and the AP captive portal.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# --- Partition table ---------------------------------------------------------
+# Custom table gives NVS enough room for preferences plus room for OTA later.
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions/partitions.csv"
+
+# --- WiFi --------------------------------------------------------------------
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=10
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=32
+
+# --- HTTP server -------------------------------------------------------------
+# Captive portal needs a generous URI length for the POST of all form fields.
+CONFIG_HTTPD_MAX_URI_LEN=1024
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
+
+# --- SNTP --------------------------------------------------------------------
+CONFIG_LWIP_SNTP_MAX_SERVERS=3
+
+# --- FreeRTOS tick rate ------------------------------------------------------
+# 1 kHz tick gives millisecond-granular timing for animations.
+CONFIG_FREERTOS_HZ=1000
+
+# --- FreeRTOS stack overflow detection ---------------------------------------
+# Method 2 (canary pattern) — when a task overflows, the panic handler names
+# the offending task instead of leaving us to guess from a corrupted IRET.
+# Tiny runtime cost at task-switch only.
+CONFIG_FREERTOS_CHECK_STACKOVERFLOW_CANARY=y
+CONFIG_FREERTOS_WATCHPOINT_END_OF_STACK=y
+
+# --- IPC task stack ----------------------------------------------------------
+# IDF's default IPC task stack (per core) is 1 KB, which is not enough when
+# SPI operations from one core have to cross-call into the other core. The
+# PT6315 driver hits this path whenever appTask (core 0) pokes the SPI bus
+# while WiFi/lwIP internals schedule work on core 1.
+CONFIG_ESP_IPC_TASK_STACK_SIZE=2048
+
+# --- FreeRTOS task trace / watermark logging ---------------------------------
+# Enables vTaskList() and uxTaskGetStackHighWaterMark(). Used by the periodic
+# watermark dump in appTask to catch which task is close to overflow.
+CONFIG_FREERTOS_USE_TRACE_FACILITY=y
+CONFIG_FREERTOS_USE_STATS_FORMATTING_FUNCTIONS=y
+
+# --- Idle task stack ---------------------------------------------------------
+# Default 1536 bytes leaves only ~976 bytes free in AP mode before any client
+# connects. Xtensa uses the interrupted task's stack for interrupt handlers,
+# so when WiFi fires a level-1 interrupt on Core 1 while IDLE1 is in
+# waiti 0, the interrupt chain overflows the idle task stack and corrupts the
+# adjacent IPC task memory — producing the InstrFetchProhibited / PC=0 panic.
+# 4096 bytes gives ~3.5 KB of interrupt headroom on both idle tasks.
+CONFIG_FREERTOS_IDLE_TASK_STACKSIZE=4096
+
+# --- C++ ---------------------------------------------------------------------
+# We use C++17 features (std::unique_ptr, structured bindings, etc.).
+CONFIG_COMPILER_CXX_EXCEPTIONS=n
+CONFIG_COMPILER_CXX_RTTI=n
