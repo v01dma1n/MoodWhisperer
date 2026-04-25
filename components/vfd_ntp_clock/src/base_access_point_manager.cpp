@@ -637,10 +637,6 @@ void BaseAccessPointManager::runBlockingLoop(DisplayManager& display,
     bool announced = false;
     TickType_t lastDump = xTaskGetTickCount();
     while (true) {
-        // Drive the display animation from this task — the main loop is
-        // blocked here so nobody else is calling display.update().
-        display.update();
-
         if (!announced && _isClientConnected) {
             LOGINF("AP connected banner: %s", connectedMsg ? connectedMsg : "");
             announced = true;

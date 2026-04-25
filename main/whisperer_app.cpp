@@ -59,43 +59,19 @@ static float whisperer_timeDataStub() { return UNSET_VALUE; }
 // chars). Dates and quotes use scrolling / matrix animations so longer
 // strings don't get truncated.
 
-// We can't use %s in renderCurrentSceneText's strftime path (it triggers
-// the time-format heuristic). Instead, we use a plain format for quotes
-// and let snprintf handle it. The trick: since snprintf wants an
-// argument that matches the format spec, and our data getter returns
-// float, we use %s AND prime the buffer — but renderCurrentSceneText
-// calls snprintf(fmt, v). That means the quote scene must bake the
-// quote *into* the format_string dynamically.
-//
-// Simpler approach: for the quote scene, `format_string` is just "%s"
-// pointed at a mutable buffer. We'll update the "scene" dynamically
-// between playlist cycles — but the engine signature is const.
-//
-// Cleanest workaround: pre-render the quote into s_quoteBuffer and have
-// the scene format string be the raw buffer pointer. The scene manager
-// will snprintf(s_quoteBuffer, v) — snprintf with no % specifiers
-// copies the string verbatim. That's exactly what we want.
-//
-// The refresh getter returns UNSET_VALUE so the "dashes placeholder"
-// path in scene_manager only activates if the buffer is empty.
-//
-// We accept this small hack because it avoids touching the engine's
-// scene signature (that would ripple through every other app).
+// For the Quote scenes: format_string points at s_quoteBuffer (no % specifiers).
+// whisperer_refreshQuote() fills the buffer as a side effect and returns
+// UNSET_VALUE; scene_manager now treats a specifier-free non-empty format
+// string as a pre-rendered literal and copies it verbatim.
 
 static const DisplayScene s_scenePlaylist[] = {
-    // Time — live-updated, slot-machine on entry, seconds-updated static frames after.
-    { "Time",    " %H-%M-%S",   SLOT_MACHINE, false, true,  8000, 150, 40, &whisperer_timeDataStub },
-
-    // Date — matrix reveal.
-    { "Date",    " %b %d",       MATRIX,       false, false, 4000, 250, 40, &whisperer_timeDataStub },
-
-    // Quote — scrolls in. format_string points at the pre-filled buffer,
-    // whose contents refreshQuote() updated when the scene started.
-    // scene manager's snprintf(fmt, v) with no %-spec just copies the buffer.
-    { "Quote",   s_quoteBuffer,  SCROLLING,    false, false, 7000, 180,  0, &whisperer_refreshQuote },
-
-    // Year — bright static text.
-    { "Year",    "     %Y",     STATIC_TEXT,  false, false, 3000,   0,  0, &whisperer_timeDataStub },
+    // Time — live, slot-machine entry, seconds tick after.
+    { "Time",  " %H-%M-%S",  SLOT_MACHINE, false, true,  8000, 150, 40, &whisperer_timeDataStub },
+    { "Date",  " %b %d",      MATRIX,      false, false, 4000, 250, 40, &whisperer_timeDataStub },
+    { "Time",  " %H-%M-%S",  SLOT_MACHINE, false, true,  8000, 150, 40, &whisperer_timeDataStub },
+    { "Year",  "%m/%d/%Y",    STATIC_TEXT, false, false, 3000,   0,  0, &whisperer_timeDataStub },
+    { "Time",  " %H-%M-%S",  SLOT_MACHINE, false, true,  8000, 150, 40, &whisperer_timeDataStub },
+    { "Quote", s_quoteBuffer, SCROLLING,   false, false, 7000, 250,  0, &whisperer_refreshQuote },
 };
 
 static const int s_numScenes = sizeof(s_scenePlaylist) / sizeof(DisplayScene);
@@ -209,7 +185,7 @@ void WhispererApp::refreshMoodProvider() {
     } else {
         _moodProvider = std::make_unique<RandomMoodProvider>();
     }
-    _quotes = std::make_unique<QuoteManager>(_moodProvider.get());
+    _quotes = std::make_unique<QuoteManager>(_moodProvider.get(), nullptr, 0, 10);
 }
 
 // --- IBaseClock implementations --------------------------------------------

@@ -12,6 +12,9 @@
 #include "i_display_driver.h"
 #include "i_animation.h"
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+
 #include <memory>
 #include <vector>
 
@@ -40,6 +43,12 @@ public:
 private:
     IDisplayDriver&              _display;
     std::unique_ptr<IAnimation>  _currentAnimation;
+
+    // Protects _currentAnimation and _lastFrame* against concurrent access
+    // between the DisplayTask (which calls update()) and the AppTask (which
+    // calls setAnimation()). Declared mutable so isAnimationRunning() const
+    // can also lock it.
+    mutable SemaphoreHandle_t    _mutex = nullptr;
 
     // Cache of the last frame we actually pushed to the driver. `update()`
     // compares against this and suppresses redundant SPI bursts, which

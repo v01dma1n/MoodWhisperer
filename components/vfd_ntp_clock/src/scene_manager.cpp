@@ -61,8 +61,14 @@ void SceneManager::renderCurrentSceneText(char* out, size_t out_size) {
 
     float v = scene.getDataValue ? scene.getDataValue() : 0.0f;
     if (v == UNSET_VALUE) {
-        // Data not yet available — show dashes of the right shape.
-        std::snprintf(out, out_size, "---");
+        // If fmt has no format specifiers it's a pre-rendered literal that
+        // getDataValue() filled as a side effect (e.g. the quote buffer).
+        // Only show dashes when there is actually a specifier to substitute.
+        if (fmt[0] != '\0' && std::strchr(fmt, '%') == nullptr) {
+            std::snprintf(out, out_size, "%s", fmt);
+        } else {
+            std::snprintf(out, out_size, "---");
+        }
         return;
     }
     std::snprintf(out, out_size, fmt, v);
@@ -105,10 +111,6 @@ void SceneManager::startCurrentScene() {
 }
 
 void SceneManager::update() {
-    // Tick the display unconditionally so animations set before the FSM
-    // reaches RUNNING_NORMAL (e.g. the startup greeting) are actually shown.
-    _app.getClock().update();
-
     if (!_app.isOkToRunScenes()) return;
     if (!_scenePlaylist || _numScenes <= 0) return;
 

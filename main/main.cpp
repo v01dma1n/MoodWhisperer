@@ -46,14 +46,24 @@ static void logTaskWatermarks() {
     LOGINF("--- end watermarks ---");
 }
 
+// Advances the current animation at ~50 Hz regardless of what the AppTask
+// is doing. Runs on core 1 so WiFi-connect and NTP-sync blocking on core 0
+// don't stall the glass. DisplayManager's mutex keeps setAnimation() /
+// update() race-free.
+static void displayTask(void* /*pvParameters*/) {
+    DisplayManager& dm = WhispererApp::getInstance().getClock();
+    for (;;) {
+        dm.update();
+        vTaskDelay(pdMS_TO_TICKS(20));  // 50 Hz
+    }
+}
+
 static void refreshTask(void* /*pvParameters*/) {
-    // Entered only after appTask has already built the singleton and
-    // confirmed the driver wants continuous updates. No race with
-    // app.setup() — we're guaranteed to have a fully-constructed driver.
+    // Only reached for drivers that need external multiplexing (not PT6315).
     IDisplayDriver& display = WhispererApp::getInstance().getDisplay();
     for (;;) {
         display.writeNextDigit();
-        vTaskDelay(pdMS_TO_TICKS(1));  // ~1 kHz refresh for up to 10 cells
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
 
@@ -67,6 +77,13 @@ static void appTask(void* /*pvParameters*/) {
     // so under the current wiring this branch is never taken; we keep
     // the code path so swapping in a MAX6921-style driver is a one-line
     // change in vfd_hardware_map.h + the driver REQUIRES.
+    // Display task always runs — keeps animations alive while AppTask blocks
+    // in WiFi connect, NTP sync, or any other blocking operation.
+    xTaskCreatePinnedToCore(
+        displayTask, "DisplayTask",
+        4096, nullptr, 6, nullptr,
+        /*core=*/1);
+
     if (app.getDisplay().needsContinuousUpdate()) {
         xTaskCreatePinnedToCore(
             refreshTask, "RefreshTask",
