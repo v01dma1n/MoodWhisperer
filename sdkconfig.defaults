@@ -1,4 +1,4 @@
-# VFDWhisperer sdkconfig defaults.
+# MoodWhisperer sdkconfig defaults.
 # These are the minimum non-default settings the firmware expects.
 # Apply with:  idf.py reconfigure  (first build picks them up automatically).
 

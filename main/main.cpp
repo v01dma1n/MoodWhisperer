@@ -1,4 +1,4 @@
-// main.cpp — ESP-IDF entry point for VFDWhisperer.
+// main.cpp — ESP-IDF entry point for MoodWhisperer.
 //
 // The structure mirrors GustavClock's two-task layout:
 //   * Core 0, "AppTask" — runs BaseNtpClockApp::setup() once and then
@@ -112,7 +112,7 @@ static void appTask(void* /*pvParameters*/) {
 }
 
 extern "C" void app_main(void) {
-    LOGINF(">>> VFDWhisperer booting");
+    LOGINF(">>> MoodWhisperer booting");
 
     // Initialize NVS up front — BasePreferences::setup() will do the
     // same, but pulling it forward means early log statements can be

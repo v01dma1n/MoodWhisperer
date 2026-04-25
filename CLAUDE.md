@@ -1,4 +1,4 @@
-# VFDWhisperer — agent instructions
+# MoodWhisperer — agent instructions
 
 ## Project
 ESP-IDF firmware for a Sony HT-CT550W VFD (PT6315 controller) turned into
@@ -30,13 +30,13 @@ idf.py -p /dev/ttyUSB0 erase-flash
 idf.py -p /dev/ttyUSB0 flash
 
 This wipes WiFi credentials — the device will come up in AP mode
-(`vfd-whisperer`, open) and need portal reconfiguration.
+(`mood-whisperer`, open) and need portal reconfiguration.
 
 ## Conventions
 - Edit `sdkconfig.defaults`, never `sdkconfig` directly. After editing
   defaults, run `idf.py reconfigure` before the next build.
-- The engine is in `components/vfd_ntp_clock/`. The PT6315 driver is in
-  `components/vfd_ntp_clock_drivers/`. The application is in `main/`.
+- The engine is in `components/esp32_ntp_clock/`. The PT6315 driver is in
+  `components/esp32_ntp_clock_drivers/`. The application is in `main/`.
 - Base class names (BaseConfig, BaseAccessPointManager, BaseNtpClockApp,
   IBaseClock, IDisplayDriver) are chosen to mirror ESP32NTPClock on
   Arduino. Preserve them when refactoring.

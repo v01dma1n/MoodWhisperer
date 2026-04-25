@@ -1,4 +1,4 @@
-# VFDWhisperer
+# MoodWhisperer
 
 An ESP-IDF firmware scaffold for a Sony HT-CT550W front-panel VFD turned
 standalone NTP clock with a twist: it whispers mood-driven motivational
@@ -51,7 +51,7 @@ correctly).
 ## Project layout
 
 ```
-VFDWhisperer/
+MoodWhisperer/
 ├── CMakeLists.txt
 ├── sdkconfig.defaults
 ├── partitions/
@@ -63,7 +63,7 @@ VFDWhisperer/
 │   └── esp32_ntp_clock_drivers/    # git submodule → ESP32NTPClockDrivers2
 │       ├── include/                # + DispDriverPT6315 for the Sony board
 │       └── src/
-└── main/                           # the VFDWhisperer application
+└── main/                           # the MoodWhisperer application
     ├── main.cpp
     ├── whisperer_app.{h,cpp}
     ├── whisperer_preferences.{h,cpp}
@@ -106,7 +106,7 @@ WiFi) is internal to the engine and used through those interfaces.
 
 ### 2. Drivers (`components/esp32_ntp_clock_drivers`)
 
-Only one driver is relevant for VFDWhisperer — `DispDriverPT6315`. It
+Only one driver is relevant for MoodWhisperer — `DispDriverPT6315`. It
 wraps a lower-level `SonyVfdPt6315` class (the IDF port of the Arduino
 `SonyVFD` library) behind the `IDisplayDriver` interface. Unlike the
 MAX6921, the PT6315 multiplexes internally, so there's no need for a
@@ -222,7 +222,7 @@ The `components/esp32_ntp_clock` and `components/esp32_ntp_clock_drivers`
 directories are git submodules. Initialise them after cloning:
 
 ```bash
-git clone --recurse-submodules https://github.com/v01dma1n/VFDWhisperer.git
+git clone --recurse-submodules https://github.com/v01dma1n/MoodWhisperer.git
 # or, inside an existing clone:
 git submodule update --init
 ```
@@ -231,14 +231,14 @@ Then build and flash:
 
 ```bash
 . $IDF_PATH/export.sh
-cd VFDWhisperer
+cd MoodWhisperer
 idf.py set-target esp32
 idf.py build
 idf.py -p /dev/ttyUSB0 flash monitor
 ```
 
 First boot: the board comes up in AP mode (no credentials stored).
-Connect your phone to the open `vfd-whisperer` network, the captive
+Connect your phone to the open `mood-whisperer` network, the captive
 portal opens, fill in WiFi + timezone, tap save.
 
 ---

@@ -1,4 +1,4 @@
-# VFDWhisperer app.
+# MoodWhisperer app.
 
 idf_component_register(
     SRCS

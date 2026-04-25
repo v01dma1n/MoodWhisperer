@@ -155,7 +155,7 @@ void WhispererApp::setup() {
 
     if (_sceneManager) _sceneManager->setup(s_scenePlaylist, s_numScenes);
 
-    LOGINF("VFDWhisperer ready");
+    LOGINF("MoodWhisperer ready");
 }
 
 void WhispererApp::loop() {

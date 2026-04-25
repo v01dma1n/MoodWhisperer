@@ -1,4 +1,4 @@
-// whisperer_app.h — the VFDWhisperer application.
+// whisperer_app.h — the MoodWhisperer application.
 //
 // Mirrors GustavClock's GustavClockApp in structure: one class that
 // inherits BaseNtpClockApp, owns a DispDriverPT6315 and a DisplayManager,
@@ -55,7 +55,7 @@ public:
 private:
     WhispererApp();
 
-    static constexpr const char* APP_HOST_NAME = "vfd-whisperer";
+    static constexpr const char* APP_HOST_NAME = "mood-whisperer";
 
     // Hardware + managers (owned here).
     DispDriverPT6315                     _display;
