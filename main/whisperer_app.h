@@ -5,9 +5,10 @@
 // and supplies the IBaseClock implementations the engine wants.
 //
 // Additions over GustavClock:
-//   * QuoteManager + MoodProvider — picks a mood-appropriate quote for
-//     the "Quote" scene in the playlist.
-//   * No weather manager. The quote stream is our "extra content".
+//   * QuoteManager + MoodProvider — picks a mood-appropriate quote.
+//   * VL53L0X distance sensor — triggers quotes on movement; maps
+//     distance to mood (<1 m gloomy, >1 m upbeat).
+//   * MoodLeds — two WS2812 LEDs that glow amber when a quote plays.
 
 #pragma once
 
@@ -16,27 +17,25 @@
 #include "disp_driver_pt6315.h"
 #include "whisperer_preferences.h"
 #include "whisperer_access_point_manager.h"
+#include "vl53l0x_driver.h"
+#include "mood_leds.h"
 
+#include <atomic>
 #include <memory>
 
 class WhispererApp : public BaseNtpClockApp {
 public:
-    // Singleton: the scene-playlist data getter callbacks need a way to
-    // reach the instance without receiving 'this' explicitly.
     static WhispererApp& getInstance();
 
     ~WhispererApp() override;
 
     void setup() override;
     void loop()  override;
-
     void setupHardware() override;
 
-    // Preferences accessor (for code that needs to read specific fields).
-    WhispererPreferences& getPrefs() { return _appPrefs; }
-
-    // Quote manager accessor for the scene playlist's text providers.
-    QuoteManager& getQuoteManager() { return *_quotes; }
+    WhispererPreferences& getPrefs()      { return _appPrefs; }
+    QuoteManager&         getQuoteManager() { return *_quotes; }
+    MoodLeds&             getMoodLeds()   { return _moodLeds; }
 
     // --- IBaseClock --------------------------------------------------------
     const char* getAppName()  const override { return APP_HOST_NAME; }
@@ -52,27 +51,36 @@ public:
     void formatTime(char* txt, unsigned txt_size,
                     const char* format, time_t now) override;
 
+    // Called from the distance-sensor task: reads sensor + processes result.
+    void pollDistance();
+
 private:
     WhispererApp();
 
     static constexpr const char* APP_HOST_NAME = "mood-whisperer";
 
-    // Hardware + managers (owned here).
-    DispDriverPT6315                     _display;
-    std::unique_ptr<DisplayManager>      _displayManager;
+    DispDriverPT6315                 _display;
+    std::unique_ptr<DisplayManager>  _displayManager;
 
-    WhispererPreferences                 _appPrefs;
-    WhispererAccessPointManager          _apManagerConcrete;
+    WhispererPreferences             _appPrefs;
+    WhispererAccessPointManager      _apManagerConcrete;
 
-    // Mood + quotes.
-    std::unique_ptr<MoodProvider>        _moodProvider;
-    std::unique_ptr<QuoteManager>        _quotes;
+    std::unique_ptr<MoodProvider>    _moodProvider;
+    std::unique_ptr<QuoteManager>    _quotes;
 
-    // Rebuild the mood provider based on preferences (called after
-    // preferences are loaded and whenever the portal save changes them).
+    Vl53l0xDriver                    _tof;
+    MoodLeds                         _moodLeds;
+    bool                             _tofAvailable = false;
+
+    // Distance-triggered quote state.
+    std::atomic<bool> _inQuoteMode{false};
+    int     _lastStableDistanceMm = -1;
+    int64_t _lastQuoteTriggerMs   = 0;  // ms from xTaskGetTickCount
+
     void refreshMoodProvider();
+    void onDistanceReading(int mm);
+    void triggerDistanceQuote(int distanceMm);
+    static float moodFromDistance(int mm);
 
-    // AP trigger hold detection. Non-zero once the button goes low;
-    // reset to 0 on release or after AP mode is requested.
     int64_t _apTriggerHeldSinceUs = 0;
 };

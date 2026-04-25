@@ -9,6 +9,7 @@
 #pragma once
 
 #include "driver/spi_common.h"
+#include "driver/i2c.h"
 
 // Sony HT-CT550W CN803 <-> ESP32-WROOM wiring.
 constexpr int PT6315_GPIO_SCK  = 18;  // FL_CLK  — VSPI SCK
@@ -26,3 +27,18 @@ constexpr int AP_TRIGGER_GPIO = 0;
 // Built-in blue LED on the ESP32-WROOM dev board. Toggled on every WiFi /
 // IP event so it flashes during connect, DHCP, and NTP activity. -1 disables.
 constexpr int LED_GPIO = 2;
+
+// VL53L0X Time-of-Flight sensor (I2C).
+constexpr int TOF_I2C_SDA  = 21;
+constexpr int TOF_I2C_SCL  = 22;
+constexpr i2c_port_t TOF_I2C_PORT = I2C_NUM_0;
+
+// Mood LEDs — two WS2812-compatible addressable LEDs on a single data wire.
+constexpr int MOOD_LED_GPIO  = 4;
+constexpr int MOOD_LED_COUNT = 2;
+
+// Distance change threshold (mm) that triggers a quote.
+constexpr int DISTANCE_CHANGE_THRESHOLD_MM = 300;
+
+// Minimum time (ms) between consecutive quote triggers.
+constexpr int64_t QUOTE_COOLDOWN_MS = 30'000;

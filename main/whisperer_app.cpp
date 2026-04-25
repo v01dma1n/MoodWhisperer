@@ -10,62 +10,43 @@
 #include "esp_timer.h"
 #include "esp_wifi.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
 
-// --- Data getters for scenes that aren't pure time formats ---------------
-//
-// The DisplayScene callback returns a float. For the quote scene we need
-// a *string*, not a float, so the real text comes from a separate static
-// buffer refreshed by the data getter and embedded into the scene's
-// format string with %s. The getter returns UNSET_VALUE for scenes that
-// only care about the side effect.
+// --- WiFi activity LED -------------------------------------------------------
 
-// One-shot timer that turns the LED off after a brief flash.
 static esp_timer_handle_t s_ledOffTimer = nullptr;
 
 static void ledOffCallback(void*) {
     gpio_set_level(static_cast<gpio_num_t>(LED_GPIO), 0);
 }
 
-// On every WiFi/IP event: turn LED on and (re)start the off-timer.
-// Rapid bursts keep it lit while active; it goes dark 80 ms after the last event.
 static void ledWifiEventHandler(void*, esp_event_base_t, int32_t, void*) {
     if (LED_GPIO < 0 || !s_ledOffTimer) return;
     gpio_set_level(static_cast<gpio_num_t>(LED_GPIO), 1);
     esp_timer_stop(s_ledOffTimer);
-    esp_timer_start_once(s_ledOffTimer, 80 * 1000ULL);  // 80 ms
+    esp_timer_start_once(s_ledOffTimer, 80 * 1000ULL);
 }
+
+// --- Scene playlist ----------------------------------------------------------
 
 static char s_quoteBuffer[48] = "HELLO";
 
 static float whisperer_refreshQuote() {
-    // Called once when a Quote scene starts; picks a fresh quote and
-    // caches it in the static buffer read by the scene's format string.
     const char* q = WhispererApp::getInstance().getQuoteManager().pickQuote();
     if (q && *q) {
         std::strncpy(s_quoteBuffer, q, sizeof(s_quoteBuffer) - 1);
         s_quoteBuffer[sizeof(s_quoteBuffer) - 1] = '\0';
     }
-    return UNSET_VALUE;  // signal "no numeric value" to the scene manager
+    return UNSET_VALUE;
 }
 
 static float whisperer_timeDataStub() { return UNSET_VALUE; }
 
-// --- Scene playlist ------------------------------------------------------
-//
-// The display is 10 cells wide. Time-of-day scenes fit ("HH-MM-SS" = 8
-// chars). Dates and quotes use scrolling / matrix animations so longer
-// strings don't get truncated.
-
-// For the Quote scenes: format_string points at s_quoteBuffer (no % specifiers).
-// whisperer_refreshQuote() fills the buffer as a side effect and returns
-// UNSET_VALUE; scene_manager now treats a specifier-free non-empty format
-// string as a pre-rendered literal and copies it verbatim.
-
 static const DisplayScene s_scenePlaylist[] = {
-    // Time — live, slot-machine entry, seconds tick after.
     { "Time",  " %H-%M-%S",  SLOT_MACHINE, false, true,  8000, 150, 40, &whisperer_timeDataStub },
     { "Date",  " %b %d",      MATRIX,      false, false, 4000, 250, 40, &whisperer_timeDataStub },
     { "Time",  " %H-%M-%S",  SLOT_MACHINE, false, true,  8000, 150, 40, &whisperer_timeDataStub },
@@ -73,10 +54,9 @@ static const DisplayScene s_scenePlaylist[] = {
     { "Time",  " %H-%M-%S",  SLOT_MACHINE, false, true,  8000, 150, 40, &whisperer_timeDataStub },
     { "Quote", s_quoteBuffer, SCROLLING,   false, false, 7000, 250,  0, &whisperer_refreshQuote },
 };
-
 static const int s_numScenes = sizeof(s_scenePlaylist) / sizeof(DisplayScene);
 
-// --- Singleton boilerplate ---------------------------------------------------
+// --- Singleton ---------------------------------------------------------------
 
 WhispererApp& WhispererApp::getInstance() {
     static WhispererApp instance;
@@ -86,17 +66,16 @@ WhispererApp& WhispererApp::getInstance() {
 WhispererApp::~WhispererApp() = default;
 
 WhispererApp::WhispererApp()
-    : _display(PT6315_GPIO_SCK, PT6315_GPIO_CS, PT6315_GPIO_MOSI,
-               PT6315_SPI_HOST),
+    : _display(PT6315_GPIO_SCK, PT6315_GPIO_CS, PT6315_GPIO_MOSI, PT6315_SPI_HOST),
       _appPrefs(),
-      _apManagerConcrete(_appPrefs) {
+      _apManagerConcrete(_appPrefs),
+      _tof(TOF_I2C_PORT, TOF_I2C_SDA, TOF_I2C_SCL) {
     _displayManager = std::make_unique<DisplayManager>(_display);
-
     _prefs     = &_appPrefs;
     _apManager = &_apManagerConcrete;
 }
 
-// --- Hardware & lifecycle ---------------------------------------------------
+// --- Hardware & lifecycle ----------------------------------------------------
 
 void WhispererApp::setupHardware() {
     if (AP_TRIGGER_GPIO >= 0) {
@@ -125,17 +104,16 @@ void WhispererApp::setupHardware() {
         ta.name     = "led_off";
         esp_timer_create(&ta, &s_ledOffTimer);
 
-        esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
-                                   ledWifiEventHandler, nullptr);
-        esp_event_handler_register(IP_EVENT,   ESP_EVENT_ANY_ID,
-                                   ledWifiEventHandler, nullptr);
+        esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, ledWifiEventHandler, nullptr);
+        esp_event_handler_register(IP_EVENT,   ESP_EVENT_ANY_ID, ledWifiEventHandler, nullptr);
         LOGINF("WiFi activity LED on GPIO %d", LED_GPIO);
     }
+
+    _moodLeds.init(MOOD_LED_GPIO, MOOD_LED_COUNT);
 
     _displayManager->begin();
     _display.setBrightness(static_cast<uint8_t>(_appPrefs.config.displayBrightness));
 
-    // Give the user immediate visual feedback that the board is alive.
     if (_appPrefs.config.showStartupAnimation) {
         _displayManager->setAnimation(
             std::make_unique<ScrollingTextAnimation>(APP_GREETING, 150, false));
@@ -148,12 +126,17 @@ void WhispererApp::setupHardware() {
 void WhispererApp::setup() {
     BaseNtpClockApp::setup();
     refreshMoodProvider();
-
-    // Prime the quote buffer so the very first render isn't blank while
-    // the scrolling animation starts.
     whisperer_refreshQuote();
 
     if (_sceneManager) _sceneManager->setup(s_scenePlaylist, s_numScenes);
+
+    _tofAvailable = _tof.init();
+    if (_tofAvailable) {
+        _tof.startContinuous();
+        LOGINF("VL53L0X distance sensor started");
+    } else {
+        LOGINF("VL53L0X not available — distance triggering disabled");
+    }
 
     LOGINF("MoodWhisperer ready");
 }
@@ -161,6 +144,7 @@ void WhispererApp::setup() {
 void WhispererApp::loop() {
     BaseNtpClockApp::loop();
 
+    // AP trigger (BOOT button, hold 3 s).
     if (AP_TRIGGER_GPIO >= 0 && _fsmManager && !_fsmManager->isInState("AP_MODE")) {
         if (gpio_get_level((gpio_num_t)AP_TRIGGER_GPIO) == 0) {
             if (_apTriggerHeldSinceUs == 0)
@@ -174,9 +158,86 @@ void WhispererApp::loop() {
             _apTriggerHeldSinceUs = 0;
         }
     }
+
+    // Detect end of distance-triggered quote and return to clock.
+    if (_inQuoteMode && !_displayManager->isAnimationRunning()) {
+        _inQuoteMode = false;
+        _moodLeds.startFadeOut();
+        _lastQuoteTriggerMs = (int64_t)xTaskGetTickCount() * portTICK_PERIOD_MS;
+        LOGINF("Quote done — back to clock (cooldown %lld s)", QUOTE_COOLDOWN_MS / 1000);
+    }
 }
 
-// --- MoodProvider selection -------------------------------------------------
+// --- Distance sensor ---------------------------------------------------------
+
+void WhispererApp::pollDistance() {
+    if (!_tofAvailable) {
+        vTaskDelay(pdMS_TO_TICKS(100));
+        return;
+    }
+    int mm = _tof.readRangeMm();
+    onDistanceReading(mm);
+    // readRangeMm already blocked ~33 ms waiting for the sample; a small
+    // extra delay keeps worst-case poll rate around 10 Hz.
+    vTaskDelay(pdMS_TO_TICKS(67));
+}
+
+void WhispererApp::onDistanceReading(int mm) {
+    if (mm <= 0 || mm > 2000) return;
+
+    if (_inQuoteMode) return;
+
+    if (_lastStableDistanceMm < 0) {
+        _lastStableDistanceMm = mm;
+        return;
+    }
+
+    int64_t nowMs = (int64_t)xTaskGetTickCount() * portTICK_PERIOD_MS;
+    bool inCooldown = (_lastQuoteTriggerMs > 0 &&
+                       (nowMs - _lastQuoteTriggerMs) < QUOTE_COOLDOWN_MS);
+
+    int delta = std::abs(mm - _lastStableDistanceMm);
+
+    if (!inCooldown && delta >= DISTANCE_CHANGE_THRESHOLD_MM) {
+        triggerDistanceQuote(mm);
+        _lastStableDistanceMm = mm;
+    } else {
+        // Slow exponential drift so baseline tracks the environment.
+        _lastStableDistanceMm = (int)(_lastStableDistanceMm * 0.98f + mm * 0.02f);
+    }
+}
+
+void WhispererApp::triggerDistanceQuote(int distanceMm) {
+    float mood = moodFromDistance(distanceMm);
+    LOGINF("ToF %d mm → mood %.2f → quote", distanceMm, mood);
+
+    _moodProvider = std::make_unique<FixedMoodProvider>(mood);
+    _quotes       = std::make_unique<QuoteManager>(_moodProvider.get(), nullptr, 0, 10);
+
+    const char* q = _quotes->pickQuote();
+    if (!q || !*q) return;
+    std::strncpy(s_quoteBuffer, q, sizeof(s_quoteBuffer) - 1);
+    s_quoteBuffer[sizeof(s_quoteBuffer) - 1] = '\0';
+
+    _moodLeds.triggerGlow();
+    _inQuoteMode = true;
+    _displayManager->setAnimation(
+        std::make_unique<ScrollingTextAnimation>(s_quoteBuffer, 250, false));
+}
+
+// Maps distance in mm to mood in [-1.0, +1.0].
+// <  500 mm → -1.0 (very close = gloomy)
+// 500–1000 mm → linear -1.0 → 0.0
+// 1000–1500 mm → linear 0.0 → +1.0
+// > 1500 mm → +1.0 (far away = upbeat)
+float WhispererApp::moodFromDistance(int mm) {
+    if (mm <= 500)  return -1.0f;
+    if (mm >= 1500) return  1.0f;
+    if (mm < 1000)  return -1.0f + (mm - 500) / 500.0f;
+    return (mm - 1000) / 500.0f;
+}
+
+// --- MoodProvider selection --------------------------------------------------
 
 void WhispererApp::refreshMoodProvider() {
     if (std::strcmp(_appPrefs.config.moodSource, "fixed") == 0) {
@@ -188,9 +249,10 @@ void WhispererApp::refreshMoodProvider() {
     _quotes = std::make_unique<QuoteManager>(_moodProvider.get(), nullptr, 0, 10);
 }
 
-// --- IBaseClock implementations --------------------------------------------
+// --- IBaseClock implementations ----------------------------------------------
 
 bool WhispererApp::isOkToRunScenes() const {
+    if (_inQuoteMode) return false;
     return _fsmManager && _fsmManager->isInState("RUNNING_NORMAL");
 }
 
@@ -206,12 +268,9 @@ void WhispererApp::activateAccessPoint() {
 
     char waiting[64];
     snprintf(waiting, sizeof(waiting), "SETUP MODE - JOIN %s", APP_HOST_NAME);
-
     char connected[] = "GOTO 192.168.4.1";
 
-    // Swap to a scrolling "setup mode" banner for the entire AP session.
     _displayManager->setAnimation(
         std::make_unique<ScrollingTextAnimation>(waiting, 180, false));
-
     _apManagerConcrete.runBlockingLoop(*_displayManager, waiting, connected);
 }

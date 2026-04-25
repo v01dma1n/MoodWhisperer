@@ -1,15 +1,10 @@
 // main.cpp — ESP-IDF entry point for MoodWhisperer.
 //
-// The structure mirrors GustavClock's two-task layout:
-//   * Core 0, "AppTask" — runs BaseNtpClockApp::setup() once and then
-//     BaseNtpClockApp::loop() forever. Handles WiFi, NTP, the captive
-//     portal, scene transitions, and animation advancement.
-//   * Core 1, "RefreshTask" — only used for drivers that need external
-//     multiplexing. The PT6315 multiplexes internally so this task is
-//     currently just a watchdog-friendly idler, but it is kept as a
-//     hook for a future driver swap.
-//
-// app_main() just spawns the two tasks and suspends itself.
+// Task layout:
+//   Core 0 "AppTask"      — setup() + loop(): WiFi, NTP, portal, scene FSM.
+//   Core 1 "DisplayTask"  — dm.update() + leds.update() at 50 Hz.
+//   Core 1 "DistanceTask" — VL53L0X poll loop (~10 Hz), triggers quotes.
+//   Core 1 "RefreshTask"  — optional, only for drivers needing sw mux (not PT6315).
 
 #include "whisperer_app.h"
 #include "logging.h"
@@ -24,14 +19,9 @@ static constexpr int APP_TASK_STACK = 12288;
 static constexpr int APP_TASK_PRIO  = 5;
 static constexpr int APP_TASK_CORE  = 0;
 
-// Print every task's remaining stack (words) to find the overflow culprit.
-// vTaskList() needs CONFIG_FREERTOS_USE_TRACE_FACILITY + USE_STATS_FORMATTING.
 static void logTaskWatermarks() {
-    // ~40 chars per task; 20 tasks is a safe upper bound for this firmware.
     static char buf[800];
     vTaskList(buf);
-    // vTaskList writes multi-line text; ESP_LOGI truncates at ~250 chars so
-    // we log one line at a time.
     LOGINF("--- task watermarks (name / state / prio / free_stack_words / num) ---");
     char* line = buf;
     for (char* p = buf; ; ++p) {
@@ -46,20 +36,27 @@ static void logTaskWatermarks() {
     LOGINF("--- end watermarks ---");
 }
 
-// Advances the current animation at ~50 Hz regardless of what the AppTask
-// is doing. Runs on core 1 so WiFi-connect and NTP-sync blocking on core 0
-// don't stall the glass. DisplayManager's mutex keeps setAnimation() /
-// update() race-free.
+// Drives display animation + mood LED fade at 50 Hz on core 1 so AppTask
+// blocking in WiFi/NTP doesn't stall the glass or the LEDs.
 static void displayTask(void* /*pvParameters*/) {
-    DisplayManager& dm = WhispererApp::getInstance().getClock();
+    WhispererApp& app  = WhispererApp::getInstance();
+    DisplayManager& dm = app.getClock();
+    MoodLeds& leds     = app.getMoodLeds();
     for (;;) {
         dm.update();
+        leds.update();
         vTaskDelay(pdMS_TO_TICKS(20));  // 50 Hz
     }
 }
 
+// Polls the VL53L0X at ~10 Hz and forwards readings to the app.
+static void distanceTask(void* /*pvParameters*/) {
+    for (;;) {
+        WhispererApp::getInstance().pollDistance();
+    }
+}
+
 static void refreshTask(void* /*pvParameters*/) {
-    // Only reached for drivers that need external multiplexing (not PT6315).
     IDisplayDriver& display = WhispererApp::getInstance().getDisplay();
     for (;;) {
         display.writeNextDigit();
@@ -71,32 +68,22 @@ static void appTask(void* /*pvParameters*/) {
     auto& app = WhispererApp::getInstance();
     app.setup();
 
-    // Now that the app (and its display driver) are fully constructed,
-    // spawn the per-digit refresh task on core 1 *only* if the driver
-    // actually needs externally-driven multiplexing. The PT6315 does not,
-    // so under the current wiring this branch is never taken; we keep
-    // the code path so swapping in a MAX6921-style driver is a one-line
-    // change in vfd_hardware_map.h + the driver REQUIRES.
-    // Display task always runs — keeps animations alive while AppTask blocks
-    // in WiFi connect, NTP sync, or any other blocking operation.
     xTaskCreatePinnedToCore(
         displayTask, "DisplayTask",
-        4096, nullptr, 6, nullptr,
-        /*core=*/1);
+        4096, nullptr, 6, nullptr, /*core=*/1);
+
+    xTaskCreatePinnedToCore(
+        distanceTask, "DistanceTask",
+        4096, nullptr, 4, nullptr, /*core=*/1);
 
     if (app.getDisplay().needsContinuousUpdate()) {
         xTaskCreatePinnedToCore(
             refreshTask, "RefreshTask",
-            4096, nullptr, 10, nullptr,
-            /*core=*/1);
+            4096, nullptr, 10, nullptr, /*core=*/1);
     }
 
-    // Dump before any FSM state can block (WiFi connect, AP mode).
     logTaskWatermarks();
 
-    // In RUNNING_NORMAL the loop returns quickly; dump every 30 s.
-    // In AP/WiFi-connect states app.loop() blocks, so the dump inside
-    // runBlockingLoop() covers those paths instead.
     static TickType_t s_lastDump = 0;
     for (;;) {
         app.loop();
@@ -114,9 +101,6 @@ static void appTask(void* /*pvParameters*/) {
 extern "C" void app_main(void) {
     LOGINF(">>> MoodWhisperer booting");
 
-    // Initialize NVS up front — BasePreferences::setup() will do the
-    // same, but pulling it forward means early log statements can be
-    // written if we ever add NVS-backed logging later.
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES ||
         err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -126,18 +110,12 @@ extern "C" void app_main(void) {
         ESP_ERROR_CHECK(err);
     }
 
-    // NETIF + event loop have to be ready before either WiFi or the
-    // captive portal manager starts.
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
     xTaskCreatePinnedToCore(
         appTask, "AppTask",
         APP_TASK_STACK, nullptr, APP_TASK_PRIO, nullptr, APP_TASK_CORE);
-
-    // RefreshTask is spawned later, from inside appTask, once the app
-    // singleton is fully constructed AND only if the selected display
-    // driver actually wants continuous external multiplexing.
 
     LOGINF(">>> tasks running; app_main returning to idle");
 }
