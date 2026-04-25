@@ -1,0 +1,6 @@
+[submodule "components/esp32_ntp_clock"]
+	path = components/esp32_ntp_clock
+	url = https://github.com/v01dma1n/ESP32NTPClock2.git
+[submodule "components/esp32_ntp_clock_drivers"]
+	path = components/esp32_ntp_clock_drivers
+	url = https://github.com/v01dma1n/ESP32NTPClockDrivers2.git

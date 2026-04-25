@@ -9,8 +9,8 @@ idf_component_register(
     INCLUDE_DIRS
         "."
     REQUIRES
-        vfd_ntp_clock
-        vfd_ntp_clock_drivers
+        esp32_ntp_clock
+        esp32_ntp_clock_drivers
         nvs_flash
 )
 
