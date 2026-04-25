@@ -7,8 +7,8 @@ and demotivational quotes between time/date scenes.
 This is the IDF port of the architecture used by
 [GustavClock](https://github.com/v01dma1n/GustavClock) (Arduino / MAX6921)
 built on top of
-[ESP32NTPClock](https://github.com/v01dma1n/ESP32NTPClock) and
-[ESP32NTPClockDrivers](https://github.com/v01dma1n/ESP32NTPClockDrivers).
+[ESP32NTPClock2](https://github.com/v01dma1n/ESP32NTPClock2) and
+[ESP32NTPClockDrivers2](https://github.com/v01dma1n/ESP32NTPClockDrivers2).
 Class names, extension points, and file layout mirror the originals, so
 switching between the Arduino and IDF variants should feel familiar.
 
@@ -35,6 +35,13 @@ side A**):
 | 10  | SW4V     | 4 – 5 V supply       |
 | 11  | DGND_FL  | GND                  |
 
+Other GPIO usage:
+
+| GPIO | Role                                                    |
+|------|---------------------------------------------------------|
+| 0    | BOOT button — hold 3 s to enter AP / config mode        |
+| 2    | Built-in blue LED — brief flash on every WiFi/IP event  |
+
 SPI settings are 1 MHz, MODE 0, framing is LSB-first (the driver
 pre-reverses each byte so IDF's MSB-first bus can emit PT6315 frames
 correctly).
@@ -50,11 +57,11 @@ VFDWhisperer/
 ├── partitions/
 │   └── partitions.csv
 ├── components/
-│   ├── vfd_ntp_clock/              # IDF port of ESP32NTPClock (the "engine")
+│   ├── esp32_ntp_clock/            # git submodule → ESP32NTPClock2 (the "engine")
 │   │   ├── include/
 │   │   └── src/
-│   └── vfd_ntp_clock_drivers/      # IDF port of ESP32NTPClockDrivers
-│       ├── include/                # + new DispDriverPT6315 for the Sony board
+│   └── esp32_ntp_clock_drivers/    # git submodule → ESP32NTPClockDrivers2
+│       ├── include/                # + DispDriverPT6315 for the Sony board
 │       └── src/
 └── main/                           # the VFDWhisperer application
     ├── main.cpp
@@ -69,9 +76,9 @@ VFDWhisperer/
 
 ## Architecture
 
-### 1. Engine (`components/vfd_ntp_clock`)
+### 1. Engine (`components/esp32_ntp_clock`)
 
-Port of ESP32NTPClock. Same class names, different backends:
+Port of ESP32NTPClock2. Same class names, different backends:
 
 | Arduino original             | IDF port                                            |
 |------------------------------|-----------------------------------------------------|
@@ -97,7 +104,7 @@ Key interfaces, unchanged in shape from the Arduino project:
 Everything else (animations, scene manager, FSM, boot manager, SNTP,
 WiFi) is internal to the engine and used through those interfaces.
 
-### 2. Drivers (`components/vfd_ntp_clock_drivers`)
+### 2. Drivers (`components/esp32_ntp_clock_drivers`)
 
 Only one driver is relevant for VFDWhisperer — `DispDriverPT6315`. It
 wraps a lower-level `SonyVfdPt6315` class (the IDF port of the Arduino
@@ -201,15 +208,26 @@ from a single HTTP response (no CDN, no external JS/CSS) at
 redirected to the AP's own IP so iOS / Android / macOS / Windows all
 pop the captive portal sheet automatically.
 
-Trigger AP mode at any time by pressing reset twice within 5 seconds.
-A touch-pad trigger can be added later via `vfd_hardware_map.h`'s
-`AP_TRIGGER_GPIO` hook and `ClockFsmManager::requestApMode()`.
+Trigger AP mode at any time by holding the BOOT button (GPIO 0) for
+3 seconds. The GPIO and hold duration are set in `vfd_hardware_map.h`
+(`AP_TRIGGER_GPIO`) and `ClockFsmManager::requestApMode()`.
 
 ---
 
 ## Build
 
 Requirements: ESP-IDF ≥ 5.1.
+
+The `components/esp32_ntp_clock` and `components/esp32_ntp_clock_drivers`
+directories are git submodules. Initialise them after cloning:
+
+```bash
+git clone --recurse-submodules https://github.com/v01dma1n/VFDWhisperer.git
+# or, inside an existing clone:
+git submodule update --init
+```
+
+Then build and flash:
 
 ```bash
 . $IDF_PATH/export.sh
