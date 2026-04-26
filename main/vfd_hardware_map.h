@@ -28,10 +28,21 @@ constexpr int AP_TRIGGER_GPIO = 0;
 // IP event so it flashes during connect, DHCP, and NTP activity. -1 disables.
 constexpr int LED_GPIO = 2;
 
-// VL53L0X Time-of-Flight sensor (I2C).
-constexpr int TOF_I2C_SDA  = 21;
-constexpr int TOF_I2C_SCL  = 22;
-constexpr i2c_port_t TOF_I2C_PORT = I2C_NUM_0;
+// I2C bus shared by VL53L0X and DS1307 (both on I2C_NUM_0 at 100 kHz).
+constexpr int        SHARED_I2C_SDA  = 21;
+constexpr int        SHARED_I2C_SCL  = 22;
+constexpr i2c_port_t SHARED_I2C_PORT = I2C_NUM_0;
+
+// VL53L0X Time-of-Flight sensor — aliases to the shared bus.
+constexpr int        TOF_I2C_SDA  = SHARED_I2C_SDA;
+constexpr int        TOF_I2C_SCL  = SHARED_I2C_SCL;
+constexpr i2c_port_t TOF_I2C_PORT = SHARED_I2C_PORT;
+
+// DS1307 RTC (HW-111 module) — same bus, address 0x68.
+constexpr int        RTC_I2C_SDA  = SHARED_I2C_SDA;
+constexpr int        RTC_I2C_SCL  = SHARED_I2C_SCL;
+constexpr i2c_port_t RTC_I2C_PORT = SHARED_I2C_PORT;
+constexpr uint8_t    RTC_I2C_ADDR = 0x68;
 
 // Mood LEDs — two WS2812-compatible addressable LEDs on a single data wire.
 constexpr int MOOD_LED_GPIO  = 4;

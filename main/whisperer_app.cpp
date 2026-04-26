@@ -9,6 +9,7 @@
 #include "esp_event.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
+#include "sntp_client.h"
 
 #include <algorithm>
 #include <cmath>
@@ -70,7 +71,8 @@ WhispererApp::WhispererApp()
     : _display(PT6315_GPIO_SCK, PT6315_GPIO_CS, PT6315_GPIO_MOSI, PT6315_SPI_HOST),
       _appPrefs(),
       _apManagerConcrete(_appPrefs),
-      _tof(TOF_I2C_PORT, TOF_I2C_SDA, TOF_I2C_SCL) {
+      _tof(TOF_I2C_PORT, TOF_I2C_SDA, TOF_I2C_SCL),
+      _rtc(RTC_I2C_PORT, RTC_I2C_SDA, RTC_I2C_SCL, RTC_I2C_ADDR) {
     _displayManager = std::make_unique<DisplayManager>(_display);
     _prefs     = &_appPrefs;
     _apManager = &_apManagerConcrete;
@@ -108,6 +110,18 @@ void WhispererApp::setupHardware() {
         esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, ledWifiEventHandler, nullptr);
         esp_event_handler_register(IP_EVENT,   ESP_EVENT_ANY_ID, ledWifiEventHandler, nullptr);
         LOGINF("WiFi activity LED on GPIO %d", LED_GPIO);
+    }
+
+    // DS1307 must init before VL53L0X — it sets the shared I2C bus to 100 kHz.
+    _rtcPresent = _rtc.init();
+    if (_rtcPresent && _rtc.isRunning()) {
+        time_t t = _rtc.readTime();
+        if (t != (time_t)-1) {
+            struct timeval tv = { .tv_sec = t, .tv_usec = 0 };
+            settimeofday(&tv, nullptr);
+            _rtcAvailable = true;
+            LOGINF("System clock seeded from DS1307");
+        }
     }
 
     _moodLeds.init(MOOD_LED_GPIO, MOOD_LED_COUNT);
@@ -158,6 +172,12 @@ void WhispererApp::loop() {
         } else {
             _apTriggerHeldSinceUs = 0;
         }
+    }
+
+    // Write NTP time back to DS1307 once on first sync.
+    if (_rtcPresent && !_rtcSynced && timeAvail) {
+        _rtc.writeTime(time(nullptr));
+        _rtcSynced = true;
     }
 
     // Detect end of distance-triggered quote and return to clock.

@@ -183,7 +183,7 @@ bool Vl53l0xDriver::init() {
     conf.scl_io_num       = _scl;
     conf.sda_pullup_en    = GPIO_PULLUP_ENABLE;
     conf.scl_pullup_en    = GPIO_PULLUP_ENABLE;
-    conf.master.clk_speed = 400000;
+    conf.master.clk_speed = 100000;  // DS1307 on the same bus caps at 100 kHz
     i2c_param_config(_port, &conf);
     esp_err_t err = i2c_driver_install(_port, I2C_MODE_MASTER, 0, 0, 0);
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {

@@ -18,6 +18,7 @@
 #include "whisperer_preferences.h"
 #include "whisperer_access_point_manager.h"
 #include "vl53l0x_driver.h"
+#include "ds1307_driver.h"
 #include "mood_leds.h"
 
 #include <atomic>
@@ -47,6 +48,7 @@ public:
     DisplayManager& getClock()   override { return *_displayManager; }
 
     bool isOkToRunScenes() const override;
+    bool hasRtcTime()     const override { return _rtcAvailable; }
     void activateAccessPoint() override;
     void formatTime(char* txt, unsigned txt_size,
                     const char* format, time_t now) override;
@@ -69,8 +71,12 @@ private:
     std::unique_ptr<QuoteManager>    _quotes;
 
     Vl53l0xDriver                    _tof;
+    Ds1307Driver                     _rtc;
     MoodLeds                         _moodLeds;
     bool                             _tofAvailable = false;
+    bool                             _rtcPresent   = false;  // chip responded on I2C
+    bool                             _rtcAvailable = false;  // chip had valid time at boot
+    bool                             _rtcSynced    = false;  // NTP time written back to RTC
 
     // Distance-triggered quote state.
     std::atomic<bool> _inQuoteMode{false};
