@@ -47,12 +47,13 @@ static float whisperer_refreshQuote() {
 static float whisperer_timeDataStub() { return UNSET_VALUE; }
 
 static const DisplayScene s_scenePlaylist[] = {
+    { "Time",  " %H.%M.%S",  SLOT_MACHINE, true,  true,  8000, 150, 40, &whisperer_timeDataStub },
+    { "Date",  " %b %d",     MATRIX,       false, false, 4000, 250, 40, &whisperer_timeDataStub },
     { "Time",  " %H-%M-%S",  SLOT_MACHINE, false, true,  8000, 150, 40, &whisperer_timeDataStub },
-    { "Date",  " %b %d",      MATRIX,      false, false, 4000, 250, 40, &whisperer_timeDataStub },
+    { "Year",  "%m/%d/%Y",   STATIC_TEXT,  false, false, 3000,   0,  0, &whisperer_timeDataStub },
     { "Time",  " %H-%M-%S",  SLOT_MACHINE, false, true,  8000, 150, 40, &whisperer_timeDataStub },
-    { "Year",  "%m/%d/%Y",    STATIC_TEXT, false, false, 3000,   0,  0, &whisperer_timeDataStub },
-    { "Time",  " %H-%M-%S",  SLOT_MACHINE, false, true,  8000, 150, 40, &whisperer_timeDataStub },
-    { "Quote", s_quoteBuffer, SCROLLING,   false, false, 7000, 250,  0, &whisperer_refreshQuote },
+    { "Year",  "%Y-%m-%d",  STATIC_TEXT,  false, false, 3000,   0,  0, &whisperer_timeDataStub },
+    // { "Quote", s_quoteBuffer, SCROLLING,   false, false, 7000, 250,  0, &whisperer_refreshQuote },
 };
 static const int s_numScenes = sizeof(s_scenePlaylist) / sizeof(DisplayScene);
 
