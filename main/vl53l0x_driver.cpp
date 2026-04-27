@@ -186,7 +186,7 @@ bool Vl53l0xDriver::init() {
     conf.master.clk_speed = 100000;  // DS1307 on the same bus caps at 100 kHz
     i2c_param_config(_port, &conf);
     esp_err_t err = i2c_driver_install(_port, I2C_MODE_MASTER, 0, 0, 0);
-    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE && err != ESP_FAIL) {
         LOGERR("VL53L0X I2C install failed: %d", err);
         return false;
     }

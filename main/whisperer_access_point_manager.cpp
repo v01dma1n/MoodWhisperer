@@ -66,6 +66,16 @@ void WhispererAccessPointManager::initializeFormFields() {
         PREF_STRING, { .str_pref = s_moodBuffer }, nullptr, 0,
     });
 
+    _formFields.push_back(FormField{
+        "owm_key", "OpenWeatherMap API Key", false, VALIDATION_NONE,
+        PREF_STRING, { .str_pref = cfg.owmApiKey }, nullptr, 0,
+    });
+
+    _formFields.push_back(FormField{
+        "owm_city", "OWM City (e.g. Warsaw,PL)", false, VALIDATION_NONE,
+        PREF_STRING, { .str_pref = cfg.owmCity }, nullptr, 0,
+    });
+
     // NOTE: After applyFormBody() runs, the app reads the buffers back into
     // numeric fields in WhispererApp::onConfigSaved (called just before
     // esp_restart). Because the AP manager reboots immediately on save,

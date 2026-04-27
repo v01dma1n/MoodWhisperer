@@ -10,6 +10,7 @@
 #include "esp_timer.h"
 #include "esp_wifi.h"
 #include "sntp_client.h"
+#include "weather_client.h"
 
 #include <algorithm>
 #include <cmath>
@@ -36,6 +37,17 @@ static void ledWifiEventHandler(void*, esp_event_base_t, int32_t, void*) {
 
 static char s_quoteBuffer[48] = "HELLO";
 
+static WeatherData s_weather             = {};
+static int64_t     s_weatherFetchedMs    = -(10LL * 60 * 1000);
+
+static float whisperer_getTemperature() {
+    return s_weather.valid ? s_weather.tempC : UNSET_VALUE;
+}
+
+static float whisperer_getHumidity() {
+    return s_weather.valid ? static_cast<float>(s_weather.humidity) : UNSET_VALUE;
+}
+
 static float whisperer_refreshQuote() {
     const char* q = WhispererApp::getInstance().getQuoteManager().pickQuote();
     if (q && *q) {
@@ -50,10 +62,12 @@ static float whisperer_timeDataStub() { return UNSET_VALUE; }
 static const DisplayScene s_scenePlaylist[] = {
     { "Time",  " %H.%M.%S",  SLOT_MACHINE, true,  true,  8000, 150, 40, &whisperer_timeDataStub },
     { "Date",  " %b %d",     MATRIX,       false, false, 4000, 250, 40, &whisperer_timeDataStub },
+    { "Temp",  "%.1f C",     SLOT_MACHINE, false, false, 4000, 150, 40, &whisperer_getTemperature },
+    { "Hum",   "%.0f RH",    SLOT_MACHINE, false, false, 4000, 150, 40, &whisperer_getHumidity },
     { "Time",  " %H-%M-%S",  SLOT_MACHINE, false, true,  8000, 150, 40, &whisperer_timeDataStub },
     { "Year",  "%m/%d/%Y",   STATIC_TEXT,  false, false, 3000,   0,  0, &whisperer_timeDataStub },
     { "Time",  " %H-%M-%S",  SLOT_MACHINE, false, true,  8000, 150, 40, &whisperer_timeDataStub },
-    { "Year",  "%Y-%m-%d",  STATIC_TEXT,  false, false, 3000,   0,  0, &whisperer_timeDataStub },
+    { "Year",  "%Y-%m-%d",   STATIC_TEXT,  false, false, 3000,   0,  0, &whisperer_timeDataStub },
     // { "Quote", s_quoteBuffer, SCROLLING,   false, false, 7000, 250,  0, &whisperer_refreshQuote },
 };
 static const int s_numScenes = sizeof(s_scenePlaylist) / sizeof(DisplayScene);
@@ -171,6 +185,17 @@ void WhispererApp::loop() {
             }
         } else {
             _apTriggerHeldSinceUs = 0;
+        }
+    }
+
+    // Weather polling (every 10 min, only when OWM is configured and WiFi is up).
+    const auto& cfg = _appPrefs.config;
+    if (cfg.owmApiKey[0] != '\0' && cfg.owmCity[0] != '\0' &&
+        _fsmManager && _fsmManager->isInState("RUNNING_NORMAL")) {
+        int64_t nowMs = (int64_t)xTaskGetTickCount() * portTICK_PERIOD_MS;
+        if (nowMs - s_weatherFetchedMs >= 10LL * 60 * 1000) {
+            s_weatherFetchedMs = nowMs;
+            s_weather = fetchWeather(cfg.owmApiKey, cfg.owmCity);
         }
     }
 

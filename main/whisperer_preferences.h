@@ -16,10 +16,12 @@
 // here, not in BaseConfig; they're serialized by the subclass's
 // getPreferences()/putPreferences().
 struct WhispererConfig : public BaseConfig {
-    bool  showStartupAnimation;
-    int32_t displayBrightness;    // 0..7
-    char  moodSource[MAX_PREF_STRING_LEN];   // "fixed" | "random"
-    int32_t fixedMoodTimes100;   // -100..+100 (stored as int to avoid NVS floats)
+    bool    showStartupAnimation;
+    int32_t displayBrightness;               // 0..7
+    char    moodSource[MAX_PREF_STRING_LEN]; // "fixed" | "random"
+    int32_t fixedMoodTimes100;               // -100..+100
+    char    owmApiKey[MAX_PREF_STRING_LEN];  // OpenWeatherMap API key (leave empty to disable)
+    char    owmCity[MAX_PREF_STRING_LEN];    // e.g. "Warsaw,PL"
 };
 
 class WhispererPreferences : public BasePreferences {

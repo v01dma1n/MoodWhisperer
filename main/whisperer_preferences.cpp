@@ -7,6 +7,8 @@ static constexpr const char* KEY_SHOW_STARTUP = "show_startup";
 static constexpr const char* KEY_BRIGHTNESS   = "brightness";
 static constexpr const char* KEY_MOOD_SRC     = "mood_src";
 static constexpr const char* KEY_FIXED_MOOD   = "fixed_mood";
+static constexpr const char* KEY_OWM_KEY      = "owm_key";
+static constexpr const char* KEY_OWM_CITY     = "owm_city";
 
 WhispererPreferences::WhispererPreferences()
     : BasePreferences(config) {
@@ -37,6 +39,9 @@ void WhispererPreferences::getPreferences() {
     config.fixedMoodTimes100 = readInt(KEY_FIXED_MOOD, 0);
     if (config.fixedMoodTimes100 < -100) config.fixedMoodTimes100 = -100;
     if (config.fixedMoodTimes100 >  100) config.fixedMoodTimes100 =  100;
+
+    readString(KEY_OWM_KEY,  config.owmApiKey, sizeof(config.owmApiKey));
+    readString(KEY_OWM_CITY, config.owmCity,   sizeof(config.owmCity));
 
     closeNvs();
 }
@@ -71,6 +76,8 @@ void WhispererPreferences::putPreferences() {
     writeInt   (KEY_BRIGHTNESS,   config.displayBrightness);
     writeString(KEY_MOOD_SRC,     config.moodSource);
     writeInt   (KEY_FIXED_MOOD,   config.fixedMoodTimes100);
+    writeString(KEY_OWM_KEY,      config.owmApiKey);
+    writeString(KEY_OWM_CITY,     config.owmCity);
 
     closeNvs();
 }
@@ -84,4 +91,6 @@ void WhispererPreferences::dumpPreferences() {
     LOGDBG("Pref=%s: %d (mood=%.2f)", KEY_FIXED_MOOD,
            (int)config.fixedMoodTimes100,
            static_cast<float>(config.fixedMoodTimes100) / 100.0f);
+    LOGDBG("Pref=%s: %s", KEY_OWM_KEY,  config.owmApiKey[0] ? "(set)" : "(empty)");
+    LOGDBG("Pref=%s: %s", KEY_OWM_CITY, config.owmCity);
 }
