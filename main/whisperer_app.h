@@ -80,6 +80,8 @@ private:
 
     // Distance-triggered quote state.
     std::atomic<bool> _inQuoteMode{false};
+    bool    _pendingQuote         = false;  // quote ready, waiting for LED full brightness
+    bool    _fadingOut            = false;  // scroll done, waiting for LED to go dark
     int     _lastStableDistanceMm = -1;
     int64_t _lastQuoteTriggerMs   = 0;  // ms from xTaskGetTickCount
 

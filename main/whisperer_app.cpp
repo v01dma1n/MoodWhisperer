@@ -62,8 +62,10 @@ static float whisperer_timeDataStub() { return UNSET_VALUE; }
 static const DisplayScene s_scenePlaylist[] = {
     { "Time",  " %H.%M.%S",  SLOT_MACHINE, true,  true,  8000, 150, 40, &whisperer_timeDataStub },
     { "Date",  " %b %d",     MATRIX,       false, false, 4000, 250, 40, &whisperer_timeDataStub },
-    { "Temp",  "%.1f C",     SLOT_MACHINE, false, false, 4000, 150, 40, &whisperer_getTemperature },
-    { "Hum",   "%.0f RH",    SLOT_MACHINE, false, false, 4000, 150, 40, &whisperer_getHumidity },
+    { "Time",  " %H.%M.%S",  SLOT_MACHINE, true,  true,  8000, 150, 40, &whisperer_timeDataStub },
+    { "Temp",  "  %.1f C",   SLOT_MACHINE, false, false, 4000, 150, 40, &whisperer_getTemperature },
+    { "Time",  " %H.%M.%S",  SLOT_MACHINE, true,  true,  8000, 150, 40, &whisperer_timeDataStub },
+    { "Hum",   "  %.0f PCT", SLOT_MACHINE, false, false, 4000, 150, 40, &whisperer_getHumidity },
     { "Time",  " %H-%M-%S",  SLOT_MACHINE, false, true,  8000, 150, 40, &whisperer_timeDataStub },
     { "Year",  "%m/%d/%Y",   STATIC_TEXT,  false, false, 3000,   0,  0, &whisperer_timeDataStub },
     { "Time",  " %H-%M-%S",  SLOT_MACHINE, false, true,  8000, 150, 40, &whisperer_timeDataStub },
@@ -205,10 +207,24 @@ void WhispererApp::loop() {
         _rtcSynced = true;
     }
 
-    // Detect end of distance-triggered quote and return to clock.
-    if (_inQuoteMode && !_displayManager->isAnimationRunning()) {
-        _inQuoteMode = false;
+    // Start the quote animation once the LED reaches full brightness.
+    if (_pendingQuote && _moodLeds.isFullyLit()) {
+        _pendingQuote = false;
+        _inQuoteMode  = true;
+        _displayManager->setAnimation(
+            std::make_unique<ScrollingTextAnimation>(s_quoteBuffer, 250, false));
+    }
+
+    // Scroll finished — begin LED fade-out; keep _inQuoteMode until dark.
+    if (_inQuoteMode && !_fadingOut && !_displayManager->isAnimationRunning()) {
+        _fadingOut = true;
         _moodLeds.startFadeOut();
+    }
+
+    // Resume scene playback once the LED is completely dark.
+    if (_fadingOut && _moodLeds.isIdle()) {
+        _fadingOut   = false;
+        _inQuoteMode = false;
         _lastQuoteTriggerMs = (int64_t)xTaskGetTickCount() * portTICK_PERIOD_MS;
         LOGINF("Quote done — back to clock (cooldown %lld s)", QUOTE_COOLDOWN_MS / 1000);
     }
@@ -231,7 +247,7 @@ void WhispererApp::pollDistance() {
 void WhispererApp::onDistanceReading(int mm) {
     if (mm <= 0 || mm > 2000) return;
 
-    if (_inQuoteMode) return;
+    if (_inQuoteMode || _pendingQuote) return;
 
     if (_lastStableDistanceMm < 0) {
         _lastStableDistanceMm = mm;
@@ -245,6 +261,8 @@ void WhispererApp::onDistanceReading(int mm) {
     int delta = std::abs(mm - _lastStableDistanceMm);
 
     if (!inCooldown && delta >= DISTANCE_CHANGE_THRESHOLD_MM) {
+        LOGDBG("ToF trigger: %d mm (baseline %d mm, delta %d mm)",
+               mm, _lastStableDistanceMm, delta);
         triggerDistanceQuote(mm);
         _lastStableDistanceMm = mm;
     } else {
@@ -266,9 +284,7 @@ void WhispererApp::triggerDistanceQuote(int distanceMm) {
     s_quoteBuffer[sizeof(s_quoteBuffer) - 1] = '\0';
 
     _moodLeds.triggerGlow();
-    _inQuoteMode = true;
-    _displayManager->setAnimation(
-        std::make_unique<ScrollingTextAnimation>(s_quoteBuffer, 250, false));
+    _pendingQuote = true;
 }
 
 // Maps distance in mm to mood in [-1.0, +1.0].

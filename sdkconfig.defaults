@@ -5,6 +5,12 @@
 # --- Target ------------------------------------------------------------------
 CONFIG_IDF_TARGET="esp32"
 
+# --- Flash size --------------------------------------------------------------
+# The WROOM module carries a 4 MB flash chip; setting this eliminates the
+# "detected size larger than binary header" warning and lets the partition
+# table use the full chip.
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
 # --- Main task stack ---------------------------------------------------------
 # The app task runs app logic, WiFi, NTP, and the AP captive portal.
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192

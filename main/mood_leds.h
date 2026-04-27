@@ -13,7 +13,8 @@ public:
     void triggerGlow();    // start fade-in (idempotent if already lit)
     void startFadeOut();   // start fade-out (called when quote ends)
     void update();         // advance fade by one step — call at 50 Hz
-    bool isIdle() const;   // true once fade-out reaches zero
+    bool isIdle() const;      // true once fade-out reaches zero
+    bool isFullyLit() const;  // true once fade-in completes
 
 private:
     led_strip_handle_t _strip = nullptr;

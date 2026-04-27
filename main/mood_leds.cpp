@@ -54,7 +54,7 @@ void MoodLeds::update() {
 
     case State::FADE_IN:
         _brightness = std::min(MAX_BRIGHTNESS, _brightness + FADE_IN_STEP);
-        if (_brightness >= 1.0f) _state = State::LIT;
+        if (_brightness >= MAX_BRIGHTNESS) _state = State::LIT;
         break;
 
     case State::LIT:
@@ -71,6 +71,10 @@ void MoodLeds::update() {
 
 bool MoodLeds::isIdle() const {
     return _state == State::IDLE;
+}
+
+bool MoodLeds::isFullyLit() const {
+    return _state == State::LIT;
 }
 
 void MoodLeds::applyBrightness() {
