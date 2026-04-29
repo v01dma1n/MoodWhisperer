@@ -5,6 +5,7 @@
 static const PrefSelectOption s_triggerModeOptions[] = {
     { "Classic (movement change)", "classic" },
     { "Thermal Overload",          "thermal" },
+    { "Geiger Proximity Pulse",    "geiger"  },
 };
 static const int s_numTriggerModeOptions =
     sizeof(s_triggerModeOptions) / sizeof(s_triggerModeOptions[0]);

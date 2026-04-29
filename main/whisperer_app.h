@@ -88,13 +88,18 @@ private:
     // Thermal Overload state.
     enum class ThermalPhase { NONE, WARN, OVERLOAD, VENTING, COOLDOWN };
     ThermalPhase _thermalPhase      = ThermalPhase::NONE;
-    int64_t      _thermalPresenceMs = 0;  // when person entered < 1 m zone
-    int64_t      _thermalCooldownMs = 0;  // when 5 s cooldown started
-    int          _thermalLastMm     = 2000; // last sensor reading in thermal mode
+    int64_t      _thermalPresenceMs = 0;
+    int64_t      _thermalCooldownMs = 0;
+    int          _thermalLastMm     = 2000;
+
+    // Geiger Proximity Pulse state.
+    bool  _geigerRunning    = false;  // true once breathing has started
+    bool  _geigerFarTrigger = false;  // true if quote came from > 1 m
 
     void refreshMoodProvider();
     void onDistanceReading(int mm);
     void onDistanceReadingThermal(int mm);
+    void onDistanceReadingGeiger(int mm);
     void triggerDistanceQuote(int distanceMm);
     static float moodFromDistance(int mm);
 

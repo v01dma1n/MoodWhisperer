@@ -60,16 +60,16 @@ static float whisperer_refreshQuote() {
 static float whisperer_timeDataStub() { return UNSET_VALUE; }
 
 static const DisplayScene s_scenePlaylist[] = {
-    { "Time",  " %H.%M.%S",  SLOT_MACHINE, true,  true,  8000, 150, 40, &whisperer_timeDataStub },
-    { "Date",  " %b %d",     MATRIX,       false, false, 4000, 250, 40, &whisperer_timeDataStub },
-    { "Time",  " %H.%M.%S",  SLOT_MACHINE, true,  true,  8000, 150, 40, &whisperer_timeDataStub },
-    { "Temp",  "  %.1f F",   SLOT_MACHINE, false, false, 4000, 150, 40, &whisperer_getTemperature },
-    { "Time",  " %H.%M.%S",  SLOT_MACHINE, true,  true,  8000, 150, 40, &whisperer_timeDataStub },
-    { "Hum",   "  %.0f PCT", SLOT_MACHINE, false, false, 4000, 150, 40, &whisperer_getHumidity },
-    { "Time",  " %H-%M-%S",  SLOT_MACHINE, false, true,  8000, 150, 40, &whisperer_timeDataStub },
-    { "Year",  "%m/%d/%Y",   STATIC_TEXT,  false, false, 3000,   0,  0, &whisperer_timeDataStub },
-    { "Time",  " %H-%M-%S",  SLOT_MACHINE, false, true,  8000, 150, 40, &whisperer_timeDataStub },
-    { "Year",  "%Y-%m-%d",   STATIC_TEXT,  false, false, 3000,   0,  0, &whisperer_timeDataStub },
+    { "Time",  " %H.%M.%S",   SLOT_MACHINE, true,  true,  8000, 150, 40, &whisperer_timeDataStub },
+    { "Date",  " %b %d",      MATRIX,       false, false, 4000, 250, 40, &whisperer_timeDataStub },
+    { "Time",  " %H. %M. %S", SLOT_MACHINE, true,  true,  8000, 150, 40, &whisperer_timeDataStub },
+    { "Temp",  "  %.1f F",    SLOT_MACHINE, true, false, 4000, 150, 40, &whisperer_getTemperature },
+    { "Time",  " %H.%M.%S",   SLOT_MACHINE, true,  true,  8000, 150, 40, &whisperer_timeDataStub },
+    { "Hum",   "  %.0f PCT",  SLOT_MACHINE, false, false, 4000, 150, 40, &whisperer_getHumidity },
+    { "Time",  " %H-%M-%S",   SLOT_MACHINE, false, true,  8000, 150, 40, &whisperer_timeDataStub },
+    { "Year",  "%m/%d/%Y",    STATIC_TEXT,  false, false, 3000,   0,  0, &whisperer_timeDataStub },
+    { "Time",  " %H-%M-%S",   SLOT_MACHINE, false, true,  8000, 150, 40, &whisperer_timeDataStub },
+    { "Year",  "%Y-%m-%d",    STATIC_TEXT,  false, false, 3000,   0,  0, &whisperer_timeDataStub },
     // { "Quote", s_quoteBuffer, SCROLLING,   false, false, 7000, 250,  0, &whisperer_refreshQuote },
 };
 static const int s_numScenes = sizeof(s_scenePlaylist) / sizeof(DisplayScene);
@@ -219,7 +219,8 @@ void WhispererApp::loop() {
 
     // Scroll finished — begin LED fade-out; keep _inQuoteMode until dark.
     if (_inQuoteMode && !_fadingOut &&
-        _thermalPhase == ThermalPhase::NONE &&      // not a thermal quote
+        _thermalPhase == ThermalPhase::NONE &&
+        std::strcmp(_appPrefs.config.triggerMode, "geiger") != 0 &&
         !_displayManager->isAnimationRunning()) {
         _fadingOut = true;
         _moodLeds.startFadeOut();
@@ -231,6 +232,27 @@ void WhispererApp::loop() {
         _inQuoteMode = false;
         _lastQuoteTriggerMs = (int64_t)xTaskGetTickCount() * portTICK_PERIOD_MS;
         LOGINF("Quote done — back to clock (cooldown %lld s)", QUOTE_COOLDOWN_MS / 1000);
+    }
+
+    // ---- Geiger Proximity Pulse mode -------------------------------------------
+
+    const bool isGeiger = (std::strcmp(_appPrefs.config.triggerMode, "geiger") == 0);
+
+    // Start LED breathing once we first enter RUNNING_NORMAL in geiger mode.
+    if (isGeiger && !_geigerRunning &&
+        _fsmManager && _fsmManager->isInState("RUNNING_NORMAL")) {
+        _geigerRunning = true;
+        _moodLeds.startGeiger(0.2f);  // frequency updated on first distance reading
+        LOGINF("Geiger: LED breathing started");
+    }
+
+    // Quote animation ended → resume breathing.
+    if (isGeiger && _inQuoteMode && !_displayManager->isAnimationRunning()) {
+        _inQuoteMode        = false;
+        _lastQuoteTriggerMs = (int64_t)xTaskGetTickCount() * portTICK_PERIOD_MS;
+        _moodLeds.startGeiger(0.2f);  // frequency snaps to current distance on next tick
+        LOGINF("Geiger: quote done — breathing resumed (cooldown %lld s)",
+               QUOTE_COOLDOWN_MS / 1000);
     }
 
     // ---- Thermal Overload mode phase transitions --------------------------------
@@ -291,6 +313,10 @@ void WhispererApp::onDistanceReading(int mm) {
 
     if (std::strcmp(_appPrefs.config.triggerMode, "thermal") == 0) {
         onDistanceReadingThermal(mm);
+        return;
+    }
+    if (std::strcmp(_appPrefs.config.triggerMode, "geiger") == 0) {
+        onDistanceReadingGeiger(mm);
         return;
     }
 
@@ -375,6 +401,59 @@ void WhispererApp::onDistanceReadingThermal(int mm) {
 
     default:
         break;
+    }
+}
+
+void WhispererApp::onDistanceReadingGeiger(int mm) {
+    // Always update LED frequency (even during quote, so resume is smooth).
+    static constexpr float DIST_FAR   = 2000.0f;
+    static constexpr float DIST_CLOSE =  100.0f;
+    static constexpr float FREQ_FAR   =    0.2f;  // slow calm breathe at 2 m
+    static constexpr float FREQ_CLOSE =    5.0f;  // rapid nervous pulse at 10 cm
+
+    float clamped = std::max(DIST_CLOSE, std::min(DIST_FAR, (float)mm));
+    float t       = (DIST_FAR - clamped) / (DIST_FAR - DIST_CLOSE);
+    float freq    = FREQ_FAR + (FREQ_CLOSE - FREQ_FAR) * t;
+    _moodLeds.setGeigerFrequency(freq);
+
+    if (_inQuoteMode) return;
+
+    // Quote trigger — same threshold and cooldown as classic mode.
+    if (_lastStableDistanceMm < 0) {
+        _lastStableDistanceMm = mm;
+        return;
+    }
+    int64_t nowMs = (int64_t)xTaskGetTickCount() * portTICK_PERIOD_MS;
+    bool inCooldown = (_lastQuoteTriggerMs > 0 &&
+                       (nowMs - _lastQuoteTriggerMs) < QUOTE_COOLDOWN_MS);
+    int delta = std::abs(mm - _lastStableDistanceMm);
+
+    if (!inCooldown && delta >= DISTANCE_CHANGE_THRESHOLD_MM) {
+        LOGDBG("Geiger trigger: %d mm (baseline %d mm, delta %d mm)",
+               mm, _lastStableDistanceMm, delta);
+        _lastStableDistanceMm = mm;
+        _geigerFarTrigger     = (mm >= 1000);
+
+        float mood = moodFromDistance(mm);
+        _moodProvider = std::make_unique<FixedMoodProvider>(mood);
+        _quotes       = std::make_unique<QuoteManager>(_moodProvider.get(), nullptr, 0, 10);
+        const char* q = _quotes->pickQuote();
+        if (!q || !*q) return;
+        std::strncpy(s_quoteBuffer, q, sizeof(s_quoteBuffer) - 1);
+        s_quoteBuffer[sizeof(s_quoteBuffer) - 1] = '\0';
+
+        _inQuoteMode = true;
+        if (_geigerFarTrigger) {
+            _moodLeds.setFull();  // stay bright during quote
+        } else {
+            _moodLeds.clearImmediate();  // "pop" — instant off
+        }
+        _displayManager->setAnimation(
+            std::make_unique<ScrollingTextAnimation>(s_quoteBuffer, 250, false));
+        LOGINF("Geiger %s trigger (%d mm, mood %.2f) → quote",
+               _geigerFarTrigger ? "far" : "close", mm, mood);
+    } else {
+        _lastStableDistanceMm = (int)(_lastStableDistanceMm * 0.98f + mm * 0.02f);
     }
 }
 

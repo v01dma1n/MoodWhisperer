@@ -78,14 +78,37 @@ void MoodLeds::update() {
         _brightness = THROB_MIN + (THROB_MAX - THROB_MIN) *
                       (0.5f + 0.5f * sinf(_throbTick * (2.0f * 3.14159f / 33.0f)));
         break;
+
+    case State::GEIGER_BREATHE:
+        _geigerPhase += 2.0f * 3.14159f * _geigerFreqHz / UPDATE_RATE_HZ;
+        if (_geigerPhase > 2.0f * 3.14159f) _geigerPhase -= 2.0f * 3.14159f;
+        _brightness = MAX_BRIGHTNESS * (0.5f + 0.5f * sinf(_geigerPhase));
+        break;
     }
 
     applyBrightness();
 }
 
-bool MoodLeds::isIdle() const      { return _state == State::IDLE; }
-bool MoodLeds::isFullyLit() const  { return _state == State::LIT; }
-bool MoodLeds::isOverloading() const { return _state == State::OVERLOAD_THROB; }
+bool MoodLeds::isIdle() const          { return _state == State::IDLE; }
+bool MoodLeds::isFullyLit() const      { return _state == State::LIT; }
+bool MoodLeds::isOverloading() const   { return _state == State::OVERLOAD_THROB; }
+bool MoodLeds::isGeigerBreathing() const { return _state == State::GEIGER_BREATHE; }
+
+void MoodLeds::startGeiger(float freqHz) {
+    _geigerFreqHz = freqHz;
+    _geigerPhase  = 3.14159f * 1.5f;  // start at sine trough → breathe up from dark
+    _state        = State::GEIGER_BREATHE;
+}
+
+void MoodLeds::setGeigerFrequency(float freqHz) {
+    _geigerFreqHz = freqHz;  // phase kept for smooth mid-breathe update
+}
+
+void MoodLeds::setFull() {
+    _brightness = 1.0f;
+    _state      = State::LIT;
+    applyBrightness();
+}
 
 void MoodLeds::setWarn() {
     _brightness = WARN_BRIGHTNESS;
