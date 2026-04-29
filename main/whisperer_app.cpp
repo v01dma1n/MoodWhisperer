@@ -41,7 +41,7 @@ static WeatherData s_weather             = {};
 static int64_t     s_weatherFetchedMs    = -(10LL * 60 * 1000);
 
 static float whisperer_getTemperature() {
-    return s_weather.valid ? s_weather.tempC : UNSET_VALUE;
+    return s_weather.valid ? s_weather.tempF : UNSET_VALUE;
 }
 
 static float whisperer_getHumidity() {
@@ -63,7 +63,7 @@ static const DisplayScene s_scenePlaylist[] = {
     { "Time",  " %H.%M.%S",  SLOT_MACHINE, true,  true,  8000, 150, 40, &whisperer_timeDataStub },
     { "Date",  " %b %d",     MATRIX,       false, false, 4000, 250, 40, &whisperer_timeDataStub },
     { "Time",  " %H.%M.%S",  SLOT_MACHINE, true,  true,  8000, 150, 40, &whisperer_timeDataStub },
-    { "Temp",  "  %.1f C",   SLOT_MACHINE, false, false, 4000, 150, 40, &whisperer_getTemperature },
+    { "Temp",  "  %.1f F",   SLOT_MACHINE, false, false, 4000, 150, 40, &whisperer_getTemperature },
     { "Time",  " %H.%M.%S",  SLOT_MACHINE, true,  true,  8000, 150, 40, &whisperer_timeDataStub },
     { "Hum",   "  %.0f PCT", SLOT_MACHINE, false, false, 4000, 150, 40, &whisperer_getHumidity },
     { "Time",  " %H-%M-%S",  SLOT_MACHINE, false, true,  8000, 150, 40, &whisperer_timeDataStub },
