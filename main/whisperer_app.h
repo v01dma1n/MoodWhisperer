@@ -94,7 +94,6 @@ private:
 
     // Geiger Proximity Pulse state.
     bool  _geigerRunning    = false;  // true once breathing has started
-    bool  _geigerFarTrigger = false;  // true if quote came from > 1 m
 
     void refreshMoodProvider();
     void onDistanceReading(int mm);

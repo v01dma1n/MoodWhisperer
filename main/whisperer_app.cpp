@@ -60,12 +60,12 @@ static float whisperer_refreshQuote() {
 static float whisperer_timeDataStub() { return UNSET_VALUE; }
 
 static const DisplayScene s_scenePlaylist[] = {
-    { "Time",  " %H.%M.%S",   SLOT_MACHINE, true,  true,  8000, 150, 40, &whisperer_timeDataStub },
+    { "Time",  " %H. %M. %S", SLOT_MACHINE, true,  true,  8000, 150, 40, &whisperer_timeDataStub },
     { "Date",  " %b %d",      MATRIX,       false, false, 4000, 250, 40, &whisperer_timeDataStub },
     { "Time",  " %H. %M. %S", SLOT_MACHINE, true,  true,  8000, 150, 40, &whisperer_timeDataStub },
-    { "Temp",  "  %.1f F",    SLOT_MACHINE, true, false, 4000, 150, 40, &whisperer_getTemperature },
-    { "Time",  " %H.%M.%S",   SLOT_MACHINE, true,  true,  8000, 150, 40, &whisperer_timeDataStub },
-    { "Hum",   "  %.0f PCT",  SLOT_MACHINE, false, false, 4000, 150, 40, &whisperer_getHumidity },
+    { "Temp",  "  %.1f F",    MATRIX,       true, false, 4000, 150, 40, &whisperer_getTemperature },
+    { "Time",  " %H. %M. %S", SLOT_MACHINE, true,  true,  8000, 150, 40, &whisperer_timeDataStub },
+    { "Hum",   "  %.0f PCT",  MATRIX,       false, false, 4000, 150, 40, &whisperer_getHumidity },
     { "Time",  " %H-%M-%S",   SLOT_MACHINE, false, true,  8000, 150, 40, &whisperer_timeDataStub },
     { "Year",  "%m/%d/%Y",    STATIC_TEXT,  false, false, 3000,   0,  0, &whisperer_timeDataStub },
     { "Time",  " %H-%M-%S",   SLOT_MACHINE, false, true,  8000, 150, 40, &whisperer_timeDataStub },
@@ -405,16 +405,19 @@ void WhispererApp::onDistanceReadingThermal(int mm) {
 }
 
 void WhispererApp::onDistanceReadingGeiger(int mm) {
-    // Always update LED frequency (even during quote, so resume is smooth).
-    static constexpr float DIST_FAR   = 2000.0f;
-    static constexpr float DIST_CLOSE =  100.0f;
-    static constexpr float FREQ_FAR   =    0.2f;  // slow calm breathe at 2 m
-    static constexpr float FREQ_CLOSE =    5.0f;  // rapid nervous pulse at 10 cm
+    // Frequency maps deviation from the adaptive ambient baseline (not absolute
+    // distance), so the mode works correctly in confined spaces like under a desk
+    // where the ceiling is always nearby. The baseline drifts slowly with the
+    // environment via the same EMA used for trigger detection.
+    static constexpr float FREQ_FAR        = 0.2f;  // calm breathe at no movement
+    static constexpr float FREQ_CLOSE      = 5.0f;  // nervous Geiger at max deviation
+    static constexpr float MAX_DEVIATION   = 400.0f; // mm of movement = full nervousness
 
-    float clamped = std::max(DIST_CLOSE, std::min(DIST_FAR, (float)mm));
-    float t       = (DIST_FAR - clamped) / (DIST_FAR - DIST_CLOSE);
-    float freq    = FREQ_FAR + (FREQ_CLOSE - FREQ_FAR) * t;
-    _moodLeds.setGeigerFrequency(freq);
+    if (_lastStableDistanceMm >= 0) {
+        float deviation = (float)std::abs(mm - _lastStableDistanceMm);
+        float t         = std::min(1.0f, deviation / MAX_DEVIATION);
+        _moodLeds.setGeigerFrequency(FREQ_FAR + (FREQ_CLOSE - FREQ_FAR) * t);
+    }
 
     if (_inQuoteMode) return;
 
@@ -432,7 +435,6 @@ void WhispererApp::onDistanceReadingGeiger(int mm) {
         LOGDBG("Geiger trigger: %d mm (baseline %d mm, delta %d mm)",
                mm, _lastStableDistanceMm, delta);
         _lastStableDistanceMm = mm;
-        _geigerFarTrigger     = (mm >= 1000);
 
         float mood = moodFromDistance(mm);
         _moodProvider = std::make_unique<FixedMoodProvider>(mood);
@@ -443,15 +445,10 @@ void WhispererApp::onDistanceReadingGeiger(int mm) {
         s_quoteBuffer[sizeof(s_quoteBuffer) - 1] = '\0';
 
         _inQuoteMode = true;
-        if (_geigerFarTrigger) {
-            _moodLeds.setFull();  // stay bright during quote
-        } else {
-            _moodLeds.clearImmediate();  // "pop" — instant off
-        }
+        _moodLeds.setFull();  // LEDs at 100% for the duration of the quote
         _displayManager->setAnimation(
             std::make_unique<ScrollingTextAnimation>(s_quoteBuffer, 250, false));
-        LOGINF("Geiger %s trigger (%d mm, mood %.2f) → quote",
-               _geigerFarTrigger ? "far" : "close", mm, mood);
+        LOGINF("Geiger trigger (%d mm, mood %.2f) → quote", mm, mood);
     } else {
         _lastStableDistanceMm = (int)(_lastStableDistanceMm * 0.98f + mm * 0.02f);
     }

@@ -35,12 +35,23 @@ side A**):
 | 10  | SW4V     | 4 – 5 V supply       |
 | 11  | DGND_FL  | GND                  |
 
+Optional add-on hardware (all present on the target PCB):
+
+| Part             | Role                                               |
+|------------------|----------------------------------------------------|
+| VL53L0X          | Time-of-flight distance sensor (I2C, addr 0x29)   |
+| DS1307 (HW-111)  | Battery-backed RTC (I2C, addr 0x68)                |
+| 2× WS2812 clone  | Mood / ambient LEDs ("MoodLeds")                   |
+
 Other GPIO usage:
 
-| GPIO | Role                                                    |
-|------|---------------------------------------------------------|
-| 0    | BOOT button — hold 3 s to enter AP / config mode        |
-| 2    | Built-in blue LED — brief flash on every WiFi/IP event  |
+| GPIO | Role                                                       |
+|------|------------------------------------------------------------|
+| 0    | BOOT button — hold 3 s to enter AP / config mode           |
+| 2    | Built-in blue LED — brief flash on every WiFi/IP event     |
+| 21   | I2C SDA (shared: VL53L0X + DS1307)                         |
+| 22   | I2C SCL (shared: VL53L0X + DS1307, 100 kHz)                |
+| 26   | WS2812 data (2 LEDs, warm amber glow)                      |
 
 SPI settings are 1 MHz, MODE 0, framing is LSB-first (the driver
 pre-reverses each byte so IDF's MSB-first bus can emit PT6315 frames
@@ -125,8 +136,13 @@ per concern just like GustavClock:
 - `WhispererAccessPointManager : BaseAccessPointManager` — adds the
   matching rows to the captive portal.
 - `WhispererApp : BaseNtpClockApp` — owns the display driver, the
-  display manager, the mood provider, the quote manager, and the
-  scene playlist.
+  display manager, the mood provider, the quote manager, the scene
+  playlist, the VL53L0X distance sensor, the DS1307 RTC, and the
+  MoodLeds instance. Houses the three quote-trigger mode state
+  machines (Classic / Thermal / Geiger).
+- `MoodLeds` — two WS2812 LEDs with seven internal states spanning
+  simple fade-in/out (Classic), three-phase thermal overload ramp,
+  and continuous sine-wave breathing with adaptive frequency (Geiger).
 
 ---
 
@@ -181,6 +197,109 @@ mutable static buffer, and its `getDataValue()` callback refreshes that
 buffer with the next quote when the scene starts. Because the buffer has
 no `%` specifiers, `snprintf()` just copies it verbatim. No engine
 changes required.
+
+---
+
+## Quote trigger modes
+
+The distance sensor and mood LEDs cooperate to trigger and frame quotes.
+The active mode is selected in the captive portal ("Quote Trigger Mode")
+and persisted to NVS.
+
+---
+
+### Classic
+
+The original behaviour.
+
+- Idle: LEDs are off.
+- Trigger: any distance reading that deviates from the slow-drifting
+  ambient baseline by ≥ `DISTANCE_CHANGE_THRESHOLD_MM` (default 300 mm)
+  fires a quote.
+- LED sequence: **fade in** (2 s) → quote scrolls once the LED is fully
+  lit → **fade out** (2 s) → scenes resume once the LED is dark.
+- 30-second cooldown between triggers (`QUOTE_COOLDOWN_MS`).
+
+---
+
+### Thermal Overload
+
+Presence-based: sustained proximity builds up "heat" until the clock
+vents.
+
+**Phase A — Warning** (person enters < 1 m zone)
+: LEDs snap to 30% and hold. No quote yet.
+
+**Phase B — Overload** (3 s continuous presence inside 1 m)
+: LEDs ramp from 30% up to a 60%–100% sine throb (~1.5 Hz).
+
+**Phase C — Vent** (triggered automatically once throb starts)
+: Quote scrolls (LEDs continue throbbing throughout). When the
+scroll ends, LEDs cut off instantly, display brightness drops to 0,
+and a 5-second cooldown begins. Cooldown ends only after **both**
+the 5 s have elapsed **and** the person has backed beyond 1 m.
+
+If the person backs away during Phase A or B, the mode resets to
+idle without venting.
+
+---
+
+### Geiger Proximity Pulse
+
+Proximity-reactive ambient lighting with continuous breathing.
+
+**Always on while in `RUNNING_NORMAL`:**  
+LEDs breathe with a sine-wave cycle. The frequency is driven by
+deviation from an adaptive ambient baseline:
+
+| Deviation from ambient | LED pulse rate |
+|------------------------|----------------|
+| 0 mm (no movement)     | ~0.2 Hz (5 s cycle — calm) |
+| ~200 mm                | ~2.5 Hz (nervous) |
+| ≥ 400 mm               | 5 Hz (rapid Geiger-counter tick) |
+
+The ambient baseline is a slow exponential moving average
+(`0.98 × old + 0.02 × new` at 10 Hz) that tracks environmental
+background — desk ceiling, wall, chair — so the mode works
+correctly in confined spaces without manual calibration.
+
+**Quote trigger:**  
+Same ≥ 300 mm delta / 30-second cooldown as Classic.
+
+**LED during quote:**  
+LEDs snap to 100% and hold for the full scroll duration, then
+`startGeiger()` resumes breathing at the current distance-derived
+frequency.
+
+---
+
+## Weather
+
+MoodWhisperer can pull current temperature (°F) and relative
+humidity from [OpenWeatherMap](https://openweathermap.org/) and
+display them as scenes in the rotation.
+
+Configure in the portal:
+
+- **OpenWeatherMap API Key** — free account at openweathermap.org,
+  "Current Weather Data" tier is sufficient.
+- **OWM City** — city name as the OWM API expects it, e.g. `New York,US`
+  or `Warsaw,PL`. Spaces are fine; the firmware URL-encodes them.
+
+Once both fields are set, the firmware fetches weather once on the first
+RUNNING\_NORMAL loop tick, then every 10 minutes. Until the first
+successful fetch the temperature and humidity scenes show `---`.
+
+Scenes added to the playlist:
+
+| Scene | Format   | Example   |
+|-------|----------|-----------|
+| Temp  | `%.1f F` | `72.3 F`  |
+| Hum   | `%.0f PCT` | `65 PCT` |
+
+The fetch blocks AppTask for up to 5 s (the HTTP timeout). DisplayTask
+runs independently on Core 1 so the display continues updating during
+the fetch.
 
 ---
 
@@ -259,11 +378,12 @@ any annunciators lit.
 
 Other nice-to-haves:
 
-- A real `MoodProvider` source (weather? calendar? BME280 pressure trend?)
-- Touch-sensor AP trigger (wire `AP_TRIGGER_GPIO` in `vfd_hardware_map.h`
-  and poll it from the app loop into `_fsmManager->requestApMode()`)
+- A real `MoodProvider` wired to a live signal — barometric pressure
+  trend from a BME280 is a natural fit; the interface is one method.
 - Refactor the quote scene hack (mutable buffer as `format_string`) into
-  a first-class `CustomTextSource` scene type in the engine
+  a first-class `CustomTextSource` scene type in the engine.
+- An `IRtcDriver` interface in `BaseNtpClockApp` so the DS1307 init /
+  NTP write-back boilerplate moves out of the app class.
 
 ---
 
