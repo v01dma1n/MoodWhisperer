@@ -1,3 +1,5 @@
+print3d/
+
 # ESP-IDF build output
 build/
 managed_components/
