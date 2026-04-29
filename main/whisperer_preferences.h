@@ -20,8 +20,9 @@ struct WhispererConfig : public BaseConfig {
     int32_t displayBrightness;               // 0..7
     char    moodSource[MAX_PREF_STRING_LEN]; // "fixed" | "random"
     int32_t fixedMoodTimes100;               // -100..+100
-    char    owmApiKey[MAX_PREF_STRING_LEN];  // OpenWeatherMap API key (leave empty to disable)
-    char    owmCity[MAX_PREF_STRING_LEN];    // e.g. "Warsaw,PL"
+    char    owmApiKey[MAX_PREF_STRING_LEN];   // OpenWeatherMap API key (leave empty to disable)
+    char    owmCity[MAX_PREF_STRING_LEN];     // e.g. "Warsaw,PL"
+    char    triggerMode[MAX_PREF_STRING_LEN]; // "classic" | "thermal"
 };
 
 class WhispererPreferences : public BasePreferences {

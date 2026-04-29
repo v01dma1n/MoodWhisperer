@@ -207,6 +207,8 @@ void WhispererApp::loop() {
         _rtcSynced = true;
     }
 
+    // ---- Classic mode: deferred animation start + LED-gated end ----------------
+
     // Start the quote animation once the LED reaches full brightness.
     if (_pendingQuote && _moodLeds.isFullyLit()) {
         _pendingQuote = false;
@@ -216,7 +218,9 @@ void WhispererApp::loop() {
     }
 
     // Scroll finished — begin LED fade-out; keep _inQuoteMode until dark.
-    if (_inQuoteMode && !_fadingOut && !_displayManager->isAnimationRunning()) {
+    if (_inQuoteMode && !_fadingOut &&
+        _thermalPhase == ThermalPhase::NONE &&      // not a thermal quote
+        !_displayManager->isAnimationRunning()) {
         _fadingOut = true;
         _moodLeds.startFadeOut();
     }
@@ -227,6 +231,44 @@ void WhispererApp::loop() {
         _inQuoteMode = false;
         _lastQuoteTriggerMs = (int64_t)xTaskGetTickCount() * portTICK_PERIOD_MS;
         LOGINF("Quote done — back to clock (cooldown %lld s)", QUOTE_COOLDOWN_MS / 1000);
+    }
+
+    // ---- Thermal Overload mode phase transitions --------------------------------
+
+    // Phase B → C: once the LED is fully throbbing, vent the quote.
+    if (_thermalPhase == ThermalPhase::OVERLOAD && _moodLeds.isOverloading()) {
+        _thermalPhase = ThermalPhase::VENTING;
+        _inQuoteMode  = true;
+        const char* q = _quotes->pickQuote();
+        if (q && *q) {
+            std::strncpy(s_quoteBuffer, q, sizeof(s_quoteBuffer) - 1);
+            s_quoteBuffer[sizeof(s_quoteBuffer) - 1] = '\0';
+        }
+        _displayManager->setAnimation(
+            std::make_unique<ScrollingTextAnimation>(s_quoteBuffer, 250, false));
+        LOGINF("Thermal: venting — Phase C quote");
+    }
+
+    // Phase C end: scroll done → LEDs off, display off, 5 s cooldown.
+    if (_thermalPhase == ThermalPhase::VENTING && !_displayManager->isAnimationRunning()) {
+        _thermalPhase      = ThermalPhase::COOLDOWN;
+        _thermalCooldownMs = (int64_t)xTaskGetTickCount() * portTICK_PERIOD_MS;
+        _inQuoteMode       = false;
+        _fadingOut         = false;
+        _moodLeds.clearImmediate();
+        _display.setBrightness(0);
+        LOGINF("Thermal: cooldown started");
+    }
+
+    // Cooldown end: 5 s elapsed AND person has backed away.
+    if (_thermalPhase == ThermalPhase::COOLDOWN) {
+        int64_t nowMs = (int64_t)xTaskGetTickCount() * portTICK_PERIOD_MS;
+        if (nowMs - _thermalCooldownMs >= 5000 && _thermalLastMm >= 1000) {
+            _thermalPhase = ThermalPhase::NONE;
+            _display.setBrightness(
+                static_cast<uint8_t>(_appPrefs.config.displayBrightness));
+            LOGINF("Thermal: cooldown ended — resuming");
+        }
     }
 }
 
@@ -246,6 +288,11 @@ void WhispererApp::pollDistance() {
 
 void WhispererApp::onDistanceReading(int mm) {
     if (mm <= 0 || mm > 2000) return;
+
+    if (std::strcmp(_appPrefs.config.triggerMode, "thermal") == 0) {
+        onDistanceReadingThermal(mm);
+        return;
+    }
 
     if (_inQuoteMode || _pendingQuote) return;
 
@@ -287,6 +334,50 @@ void WhispererApp::triggerDistanceQuote(int distanceMm) {
     _pendingQuote = true;
 }
 
+void WhispererApp::onDistanceReadingThermal(int mm) {
+    _thermalLastMm = mm;
+
+    // Ignore sensor during quote display and cooldown.
+    if (_inQuoteMode ||
+        _thermalPhase == ThermalPhase::VENTING ||
+        _thermalPhase == ThermalPhase::COOLDOWN) return;
+
+    int64_t nowMs  = (int64_t)xTaskGetTickCount() * portTICK_PERIOD_MS;
+    bool    inZone = (mm < 1000);
+
+    if (!inZone) {
+        if (_thermalPhase != ThermalPhase::NONE) {
+            LOGDBG("Thermal: left zone (%d mm) — reset", mm);
+            _thermalPhase = ThermalPhase::NONE;
+            _moodLeds.clearImmediate();
+        }
+        return;
+    }
+
+    switch (_thermalPhase) {
+    case ThermalPhase::NONE:
+        _thermalPhase      = ThermalPhase::WARN;
+        _thermalPresenceMs = nowMs;
+        _moodLeds.setWarn();
+        LOGDBG("Thermal: entered zone (%d mm) — Phase A warning", mm);
+        break;
+
+    case ThermalPhase::WARN:
+        if (nowMs - _thermalPresenceMs >= 3000) {
+            _thermalPhase = ThermalPhase::OVERLOAD;
+            _moodLeds.startOverload();
+            LOGINF("Thermal: 3 s in zone (%d mm) — Phase B overload", mm);
+        }
+        break;
+
+    case ThermalPhase::OVERLOAD:
+        break;  // transition to VENTING is driven from loop() once LED is throbbing
+
+    default:
+        break;
+    }
+}
+
 // Maps distance in mm to mood in [-1.0, +1.0].
 // <  500 mm → -1.0 (very close = gloomy)
 // 500–1000 mm → linear -1.0 → 0.0
@@ -315,6 +406,7 @@ void WhispererApp::refreshMoodProvider() {
 
 bool WhispererApp::isOkToRunScenes() const {
     if (_inQuoteMode) return false;
+    if (_thermalPhase == ThermalPhase::COOLDOWN) return false;
     return _fsmManager && _fsmManager->isInState("RUNNING_NORMAL");
 }
 

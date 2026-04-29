@@ -9,6 +9,7 @@ static constexpr const char* KEY_MOOD_SRC     = "mood_src";
 static constexpr const char* KEY_FIXED_MOOD   = "fixed_mood";
 static constexpr const char* KEY_OWM_KEY      = "owm_key";
 static constexpr const char* KEY_OWM_CITY     = "owm_city";
+static constexpr const char* KEY_TRIGGER_MODE = "trigger_mode";
 
 WhispererPreferences::WhispererPreferences()
     : BasePreferences(config) {
@@ -18,6 +19,7 @@ WhispererPreferences::WhispererPreferences()
     std::strncpy(config.moodSource, "random",
                  sizeof(config.moodSource) - 1);
     config.fixedMoodTimes100    = 0;
+    std::strncpy(config.triggerMode, "classic", sizeof(config.triggerMode) - 1);
 }
 
 void WhispererPreferences::getPreferences() {
@@ -42,6 +44,11 @@ void WhispererPreferences::getPreferences() {
 
     readString(KEY_OWM_KEY,  config.owmApiKey, sizeof(config.owmApiKey));
     readString(KEY_OWM_CITY, config.owmCity,   sizeof(config.owmCity));
+
+    readString(KEY_TRIGGER_MODE, config.triggerMode, sizeof(config.triggerMode));
+    if (config.triggerMode[0] == '\0') {
+        std::strncpy(config.triggerMode, "classic", sizeof(config.triggerMode) - 1);
+    }
 
     closeNvs();
 }
@@ -78,6 +85,7 @@ void WhispererPreferences::putPreferences() {
     writeInt   (KEY_FIXED_MOOD,   config.fixedMoodTimes100);
     writeString(KEY_OWM_KEY,      config.owmApiKey);
     writeString(KEY_OWM_CITY,     config.owmCity);
+    writeString(KEY_TRIGGER_MODE, config.triggerMode);
 
     closeNvs();
 }
@@ -91,6 +99,7 @@ void WhispererPreferences::dumpPreferences() {
     LOGDBG("Pref=%s: %d (mood=%.2f)", KEY_FIXED_MOOD,
            (int)config.fixedMoodTimes100,
            static_cast<float>(config.fixedMoodTimes100) / 100.0f);
-    LOGDBG("Pref=%s: %s", KEY_OWM_KEY,  config.owmApiKey[0] ? "(set)" : "(empty)");
-    LOGDBG("Pref=%s: %s", KEY_OWM_CITY, config.owmCity);
+    LOGDBG("Pref=%s: %s", KEY_OWM_KEY,      config.owmApiKey[0] ? "(set)" : "(empty)");
+    LOGDBG("Pref=%s: %s", KEY_OWM_CITY,     config.owmCity);
+    LOGDBG("Pref=%s: %s", KEY_TRIGGER_MODE, config.triggerMode);
 }

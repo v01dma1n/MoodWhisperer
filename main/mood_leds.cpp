@@ -50,6 +50,8 @@ void MoodLeds::update() {
 
     switch (_state) {
     case State::IDLE:
+    case State::LIT:
+    case State::WARN:
         return;
 
     case State::FADE_IN:
@@ -57,24 +59,48 @@ void MoodLeds::update() {
         if (_brightness >= MAX_BRIGHTNESS) _state = State::LIT;
         break;
 
-    case State::LIT:
-        return;
-
     case State::FADE_OUT:
         _brightness = std::max(0.0f, _brightness - FADE_OUT_STEP);
         if (_brightness <= 0.0f) _state = State::IDLE;
+        break;
+
+    case State::OVERLOAD_RAMP:
+        _brightness = std::min(THROB_MIN, _brightness + OVERLOAD_RAMP_STEP);
+        if (_brightness >= THROB_MIN) {
+            _state     = State::OVERLOAD_THROB;
+            _throbTick = 0;
+        }
+        break;
+
+    case State::OVERLOAD_THROB:
+        ++_throbTick;
+        // ~1.5 Hz sine at 50 Hz update rate (period ≈ 33 ticks)
+        _brightness = THROB_MIN + (THROB_MAX - THROB_MIN) *
+                      (0.5f + 0.5f * sinf(_throbTick * (2.0f * 3.14159f / 33.0f)));
         break;
     }
 
     applyBrightness();
 }
 
-bool MoodLeds::isIdle() const {
-    return _state == State::IDLE;
+bool MoodLeds::isIdle() const      { return _state == State::IDLE; }
+bool MoodLeds::isFullyLit() const  { return _state == State::LIT; }
+bool MoodLeds::isOverloading() const { return _state == State::OVERLOAD_THROB; }
+
+void MoodLeds::setWarn() {
+    _brightness = WARN_BRIGHTNESS;
+    _state      = State::WARN;
+    applyBrightness();
 }
 
-bool MoodLeds::isFullyLit() const {
-    return _state == State::LIT;
+void MoodLeds::startOverload() {
+    _state = State::OVERLOAD_RAMP;
+}
+
+void MoodLeds::clearImmediate() {
+    _brightness = 0.0f;
+    _state      = State::IDLE;
+    applyBrightness();
 }
 
 void MoodLeds::applyBrightness() {

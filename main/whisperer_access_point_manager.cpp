@@ -2,6 +2,13 @@
 
 #include <cstdio>
 
+static const PrefSelectOption s_triggerModeOptions[] = {
+    { "Classic (movement change)", "classic" },
+    { "Thermal Overload",          "thermal" },
+};
+static const int s_numTriggerModeOptions =
+    sizeof(s_triggerModeOptions) / sizeof(s_triggerModeOptions[0]);
+
 static const PrefSelectOption s_moodSourceOptions[] = {
     { "Random",              "random" },
     { "Fixed (use slider)",  "fixed"  },
@@ -64,6 +71,12 @@ void WhispererAccessPointManager::initializeFormFields() {
     _formFields.push_back(FormField{
         "fixed_mood", "Fixed Mood (-100..+100)", false, VALIDATION_INTEGER,
         PREF_STRING, { .str_pref = s_moodBuffer }, nullptr, 0,
+    });
+
+    _formFields.push_back(FormField{
+        "trigger_mode", "Quote Trigger Mode", false, VALIDATION_NONE, PREF_SELECT,
+        { .str_pref = cfg.triggerMode },
+        s_triggerModeOptions, s_numTriggerModeOptions,
     });
 
     _formFields.push_back(FormField{

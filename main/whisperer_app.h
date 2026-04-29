@@ -78,15 +78,23 @@ private:
     bool                             _rtcAvailable = false;  // chip had valid time at boot
     bool                             _rtcSynced    = false;  // NTP time written back to RTC
 
-    // Distance-triggered quote state.
+    // Classic quote trigger state.
     std::atomic<bool> _inQuoteMode{false};
-    bool    _pendingQuote         = false;  // quote ready, waiting for LED full brightness
-    bool    _fadingOut            = false;  // scroll done, waiting for LED to go dark
+    bool    _pendingQuote         = false;
+    bool    _fadingOut            = false;
     int     _lastStableDistanceMm = -1;
-    int64_t _lastQuoteTriggerMs   = 0;  // ms from xTaskGetTickCount
+    int64_t _lastQuoteTriggerMs   = 0;
+
+    // Thermal Overload state.
+    enum class ThermalPhase { NONE, WARN, OVERLOAD, VENTING, COOLDOWN };
+    ThermalPhase _thermalPhase      = ThermalPhase::NONE;
+    int64_t      _thermalPresenceMs = 0;  // when person entered < 1 m zone
+    int64_t      _thermalCooldownMs = 0;  // when 5 s cooldown started
+    int          _thermalLastMm     = 2000; // last sensor reading in thermal mode
 
     void refreshMoodProvider();
     void onDistanceReading(int mm);
+    void onDistanceReadingThermal(int mm);
     void triggerDistanceQuote(int distanceMm);
     static float moodFromDistance(int mm);
 
