@@ -13,6 +13,7 @@
 #pragma once
 
 #include "ESP32NTPClock.h"
+#include "quote_manager.h"
 
 #include "disp_driver_pt6315.h"
 #include "whisperer_preferences.h"

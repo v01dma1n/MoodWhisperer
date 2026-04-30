@@ -3,6 +3,7 @@
 idf_component_register(
     SRCS
         "main.cpp"
+        "quote_manager.cpp"
         "whisperer_app.cpp"
         "whisperer_preferences.cpp"
         "whisperer_access_point_manager.cpp"
