@@ -497,9 +497,8 @@ void WhispererApp::activateAccessPoint() {
 
     char waiting[64];
     snprintf(waiting, sizeof(waiting), "SETUP MODE - JOIN %s", APP_HOST_NAME);
-    char connected[] = "GOTO 192.168.4.1";
 
     _displayManager->setAnimation(
         std::make_unique<ScrollingTextAnimation>(waiting, 180, false));
-    _apManagerConcrete.runBlockingLoop(*_displayManager, waiting, connected);
+    _apManagerConcrete.runBlockingLoop();
 }
