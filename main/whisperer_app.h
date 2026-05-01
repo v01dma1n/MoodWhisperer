@@ -80,18 +80,18 @@ private:
     bool                             _rtcSynced    = false;  // NTP time written back to RTC
 
     // Classic quote trigger state.
-    std::atomic<bool> _inQuoteMode{false};
-    bool    _pendingQuote         = false;
-    bool    _fadingOut            = false;
-    int     _lastStableDistanceMm = -1;
-    int64_t _lastQuoteTriggerMs   = 0;
+    std::atomic<bool>    _inQuoteMode{false};
+    std::atomic<bool>    _pendingQuote{false};
+    bool                 _fadingOut            = false;
+    int                  _lastStableDistanceMm = -1;
+    std::atomic<int64_t> _lastQuoteTriggerMs{0};
 
     // Thermal Overload state.
     enum class ThermalPhase { NONE, WARN, OVERLOAD, VENTING, COOLDOWN };
     ThermalPhase _thermalPhase      = ThermalPhase::NONE;
     int64_t      _thermalPresenceMs = 0;
     int64_t      _thermalCooldownMs = 0;
-    int          _thermalLastMm     = 2000;
+    std::atomic<int> _thermalLastMm{2000};
 
     // Geiger Proximity Pulse state.
     bool  _geigerRunning    = false;  // true once breathing has started

@@ -66,9 +66,9 @@ static const DisplayScene s_scenePlaylist[] = {
     { "Temp",  "  %.1f F",    MATRIX,       true,  false,  7000, 300, 150, &whisperer_getTemperature },
     { "Time",  " %H. %M. %S", SLOT_MACHINE, true,  true,  10000, 150,  40, &whisperer_timeDataStub },
     { "Hum",   "  %.0f PCT",  MATRIX,       false, false,  7000, 300, 150, &whisperer_getHumidity },
-    { "Time",  " %H. %M. %S", SLOT_MACHINE, false, true,  10000, 150, 40, &whisperer_timeDataStub },
+    { "Time",  " %H. %M. %S", SLOT_MACHINE, true,  true,  10000, 150, 40, &whisperer_timeDataStub },
     { "Year",  "%m/%d/%Y",    STATIC_TEXT,  false, false, 10000,   0,  0, &whisperer_timeDataStub },
-    { "Time",  " %H. %M. %S", SLOT_MACHINE, false, true,  10000, 150, 40, &whisperer_timeDataStub },
+    { "Time",  " %H. %M. %S", SLOT_MACHINE, true,  true,  10000, 150, 40, &whisperer_timeDataStub },
     { "Year",  "%Y-%m-%d",    STATIC_TEXT,  false, false, 10000,   0,  0, &whisperer_timeDataStub },
 };
 static const int s_numScenes = sizeof(s_scenePlaylist) / sizeof(DisplayScene);
@@ -103,7 +103,8 @@ void WhispererApp::setupHardware() {
         io.pull_up_en   = GPIO_PULLUP_ENABLE;
         io.pull_down_en = GPIO_PULLDOWN_DISABLE;
         io.intr_type    = GPIO_INTR_DISABLE;
-        gpio_config(&io);
+        if (gpio_config(&io) != ESP_OK)
+            LOGERR("gpio_config failed for AP trigger GPIO %d", AP_TRIGGER_GPIO);
         LOGINF("AP trigger on GPIO %d (hold 3 s for AP mode)", AP_TRIGGER_GPIO);
     }
 
@@ -114,7 +115,8 @@ void WhispererApp::setupHardware() {
         io.pull_up_en   = GPIO_PULLUP_DISABLE;
         io.pull_down_en = GPIO_PULLDOWN_DISABLE;
         io.intr_type    = GPIO_INTR_DISABLE;
-        gpio_config(&io);
+        if (gpio_config(&io) != ESP_OK)
+            LOGERR("gpio_config failed for LED GPIO %d", LED_GPIO);
         gpio_set_level(static_cast<gpio_num_t>(LED_GPIO), 0);
 
         esp_timer_create_args_t ta = {};

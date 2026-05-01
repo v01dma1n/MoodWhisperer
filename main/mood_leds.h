@@ -1,5 +1,7 @@
 #pragma once
 #include "led_strip.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include <cstdint>
 
 // Two WS2812 LEDs that simulate vacuum-tube warm glow.
@@ -31,7 +33,8 @@ public:
     void update();            // advance by one step — call at 50 Hz
 
 private:
-    led_strip_handle_t _strip = nullptr;
+    led_strip_handle_t    _strip = nullptr;
+    mutable SemaphoreHandle_t _mutex = nullptr;
     int      _count        = 0;
     float    _brightness   = 0.0f;
     uint32_t _throbTick    = 0;
