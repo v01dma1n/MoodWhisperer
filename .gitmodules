@@ -6,4 +6,4 @@
 	url = https://github.com/v01dma1n/ESP32NTPClockDrivers2.git
 [submodule "components/esp32_wifi"]
 	path = components/esp32_wifi
-	url = file:///home/voidmain/projects/OpenSource/ESP32WiFi2
+	url = https://github.com/v01dma1n/ESP32WiFi2.git
