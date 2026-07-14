@@ -176,6 +176,29 @@ void Vl53l0xDriver::loadTuningSettings() {
     writeReg(0xFF, 0x00); writeReg(0x80, 0x00);
 }
 
+// Probe every 7-bit address and log the ones that ACK. Called on init
+// failure so the log shows whether the bus is dead (wiring/power) or the
+// sensor answered at an unexpected address.
+static void scanBus(i2c_port_t port) {
+    LOGINF("I2C scan on port %d:", (int)port);
+    int found = 0;
+    for (uint8_t a = 0x08; a <= 0x77; ++a) {
+        i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+        i2c_master_start(cmd);
+        i2c_master_write_byte(cmd, (a << 1) | I2C_MASTER_WRITE, true);
+        i2c_master_stop(cmd);
+        if (i2c_master_cmd_begin(port, cmd, pdMS_TO_TICKS(10)) == ESP_OK) {
+            LOGINF("  device ACK at 0x%02X", a);
+            ++found;
+        }
+        i2c_cmd_link_delete(cmd);
+    }
+    if (!found) {
+        LOGINF("  no devices ACKed — bus is dead, check SDA/SCL wiring and "
+               "sensor power");
+    }
+}
+
 // --- Public API ------------------------------------------------------------
 
 bool Vl53l0xDriver::init() {
@@ -194,9 +217,16 @@ bool Vl53l0xDriver::init() {
         return false;
     }
 
-    // Check model ID.
-    if (readReg(0xC0) != 0xEE) {
-        LOGERR("VL53L0X not found (model ID mismatch)");
+    // Check model ID. Read it raw so a NACK (dead bus / missing sensor)
+    // is distinguishable from a chip that answered with the wrong ID.
+    uint8_t idReg = 0xC0;
+    uint8_t model = 0;
+    esp_err_t iderr = i2c_master_write_read_device(
+        _port, _addr, &idReg, 1, &model, 1, pdMS_TO_TICKS(10));
+    if (iderr != ESP_OK || model != 0xEE) {
+        LOGERR("VL53L0X not found (addr 0x%02X, i2c err %d, model 0x%02X, "
+               "want 0xEE)", _addr, iderr, model);
+        scanBus(_port);
         return false;
     }
 
