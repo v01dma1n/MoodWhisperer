@@ -164,6 +164,21 @@ void WhispererApp::setup() {
 
     _tofAvailable = _tof.init();
     if (_tofAvailable) {
+        auto& cfg = _appPrefs.config;
+        LOGINF("VL53L0X OK | xtalkRate=%d calib=%s",
+               (int)cfg.xtalkRate, cfg.xtalkCalibPending ? "PENDING" : "no");
+        if (cfg.xtalkCalibPending) {
+            LOGINF("Glass crosstalk calibration requested — running 50 samples "
+                   "(ensure no target within 500 mm)");
+            uint16_t rate = _tof.performXtalkCalibration();
+            cfg.xtalkRate         = (int32_t)rate;
+            cfg.xtalkCalibPending = false;
+            _appPrefs.putPreferences();
+            LOGINF("Crosstalk calibration complete — rate %u saved to NVS", (unsigned)rate);
+        }
+        if (cfg.xtalkRate > 0) {
+            _tof.applyXtalkCompensation((uint16_t)cfg.xtalkRate);
+        }
         _tof.startContinuous();
         LOGINF("VL53L0X distance sensor started");
     } else {
@@ -310,7 +325,9 @@ void WhispererApp::pollDistance() {
 }
 
 void WhispererApp::onDistanceReading(int mm) {
-    if (mm <= 0 || mm > 2000) return;
+    // Ignore readings below 60 mm — spurious glass-reflection returns that
+    // would otherwise anchor the EMA baseline to the cover-glass distance.
+    if (mm < 60 || mm > 2000) return;
 
     if (std::strcmp(_appPrefs.config.triggerMode, "thermal") == 0) {
         onDistanceReadingThermal(mm);

@@ -9,7 +9,9 @@ static constexpr const char* KEY_MOOD_SRC     = "mood_src";
 static constexpr const char* KEY_FIXED_MOOD   = "fixed_mood";
 static constexpr const char* KEY_OWM_KEY      = "owm_key";
 static constexpr const char* KEY_OWM_CITY     = "owm_city";
-static constexpr const char* KEY_TRIGGER_MODE = "trigger_mode";
+static constexpr const char* KEY_TRIGGER_MODE  = "trigger_mode";
+static constexpr const char* KEY_XTALK_RATE    = "xtalk_rate";
+static constexpr const char* KEY_XTALK_CALIB   = "xtalk_calib";
 
 WhispererPreferences::WhispererPreferences()
     : BasePreferences(config) {
@@ -20,6 +22,8 @@ WhispererPreferences::WhispererPreferences()
                  sizeof(config.moodSource) - 1);
     config.fixedMoodTimes100    = 0;
     std::strncpy(config.triggerMode, "classic", sizeof(config.triggerMode) - 1);
+    config.xtalkRate        = 0;
+    config.xtalkCalibPending = false;
 }
 
 void WhispererPreferences::getPreferences() {
@@ -50,6 +54,9 @@ void WhispererPreferences::getPreferences() {
         std::strncpy(config.triggerMode, "classic", sizeof(config.triggerMode) - 1);
     }
 
+    config.xtalkRate         = readInt (KEY_XTALK_RATE,  0);
+    config.xtalkCalibPending = readBool(KEY_XTALK_CALIB, false);
+
     closeNvs();
 }
 
@@ -57,6 +64,7 @@ void WhispererPreferences::getPreferences() {
 // numeric fields through the string-typed form plumbing.
 extern char s_brightnessBuffer[];
 extern char s_moodBuffer[];
+extern char s_xtalkRateBuffer[];
 
 void WhispererPreferences::putPreferences() {
     // Re-sync buffers -> numeric fields if the AP form touched them.
@@ -74,6 +82,12 @@ void WhispererPreferences::putPreferences() {
         if (m >  100) m =  100;
         config.fixedMoodTimes100 = m;
     }
+    if (s_xtalkRateBuffer[0] != '\0') {
+        int r = atoi(s_xtalkRateBuffer);
+        if (r < 0)     r = 0;
+        if (r > 65535) r = 65535;
+        config.xtalkRate = (int32_t)r;
+    }
 
     BasePreferences::putPreferences();
 
@@ -86,6 +100,8 @@ void WhispererPreferences::putPreferences() {
     writeString(KEY_OWM_KEY,      config.owmApiKey);
     writeString(KEY_OWM_CITY,     config.owmCity);
     writeString(KEY_TRIGGER_MODE, config.triggerMode);
+    writeInt   (KEY_XTALK_RATE,   config.xtalkRate);
+    writeBool  (KEY_XTALK_CALIB,  config.xtalkCalibPending);
 
     closeNvs();
 }
@@ -102,4 +118,6 @@ void WhispererPreferences::dumpPreferences() {
     LOGDBG("Pref=%s: %s", KEY_OWM_KEY,      config.owmApiKey[0] ? "(set)" : "(empty)");
     LOGDBG("Pref=%s: %s", KEY_OWM_CITY,     config.owmCity);
     LOGDBG("Pref=%s: %s", KEY_TRIGGER_MODE, config.triggerMode);
+    LOGDBG("Pref=%s: %d (Q9.7 MCPS)", KEY_XTALK_RATE,  (int)config.xtalkRate);
+    LOGDBG("Pref=%s: %s", KEY_XTALK_CALIB, config.xtalkCalibPending ? "pending" : "no");
 }

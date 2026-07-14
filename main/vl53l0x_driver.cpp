@@ -16,7 +16,10 @@ namespace Reg {
     static constexpr uint8_t GLOBAL_REF_EN_START_SELECT  = 0xB6;
     static constexpr uint8_t RESULT_INTERRUPT_STATUS     = 0x13;
     static constexpr uint8_t RESULT_RANGE_STATUS         = 0x14;
-    static constexpr uint8_t CROSSTALK_COMPENSATION_EN   = 0x20;
+    // Writing a non-zero Q9.7 value here both enables compensation and sets the rate.
+    // Writing zero disables it.
+    static constexpr uint8_t CROSSTALK_COMPENSATION_PEAK_RATE = 0x20;
+    static constexpr uint8_t RESULT_PEAK_SIGNAL_RATE          = 0x1A; // Q9.7 MCPS, big-endian
     static constexpr uint8_t FINAL_RANGE_CONFIG_MIN_CNT  = 0x44;
     static constexpr uint8_t MSRC_CONFIG_CONTROL         = 0x60;
     static constexpr uint8_t GLOBAL_SPAD_ENABLES_REF_0   = 0xB0;
@@ -294,4 +297,48 @@ int Vl53l0xDriver::readRangeMm() {
     uint16_t mm = readReg16(0x1E);
     writeReg(Reg::SYSTEM_INTERRUPT_CLEAR, 0x01);
     return mm;
+}
+
+uint16_t Vl53l0xDriver::performXtalkCalibration(int samples) {
+    // Fire single-shot measurements with no target present (open air or
+    // black absorber at ≥500 mm).  The averaged peak signal rate is the
+    // glass-reflection crosstalk that hardware subtraction will remove.
+    uint32_t sum   = 0;
+    int      valid = 0;
+
+    for (int i = 0; i < samples; ++i) {
+        // Stop-variable preamble required before every single-shot trigger.
+        writeReg(0x80, 0x01); writeReg(0xFF, 0x01); writeReg(0x00, 0x00);
+        writeReg(0x91, _stopVariable);
+        writeReg(0x00, 0x01); writeReg(0xFF, 0x00); writeReg(0x80, 0x00);
+        writeReg(Reg::SYSRANGE_START, 0x01);  // single shot
+
+        bool timedOut = false;
+        int64_t t = esp_timer_get_time();
+        while ((readReg(Reg::RESULT_INTERRUPT_STATUS) & 0x07) == 0) {
+            if (esp_timer_get_time() - t > TIMEOUT_US) { timedOut = true; break; }
+            vTaskDelay(1);
+        }
+        writeReg(Reg::SYSRANGE_START, 0x00);
+
+        if (timedOut) {
+            LOGERR("Xtalk calibration: sensor not responding — aborting");
+            return 0;
+        }
+        sum += readReg16(Reg::RESULT_PEAK_SIGNAL_RATE);  // Q9.7 MCPS at 0x1A
+        ++valid;
+        writeReg(Reg::SYSTEM_INTERRUPT_CLEAR, 0x01);
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
+    uint16_t rate = (valid > 0) ? (uint16_t)(sum / valid) : 0;
+    LOGINF("Xtalk calibration: %d/%d valid samples, rate = %u (Q9.7 MCPS)",
+           valid, samples, (unsigned)rate);
+    return rate;
+}
+
+void Vl53l0xDriver::applyXtalkCompensation(uint16_t rateMcps) {
+    writeReg16(Reg::CROSSTALK_COMPENSATION_PEAK_RATE, rateMcps);
+    LOGINF("Xtalk compensation %s (rate %u Q9.7 MCPS)",
+           rateMcps ? "enabled" : "disabled", (unsigned)rateMcps);
 }

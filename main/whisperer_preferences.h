@@ -23,6 +23,8 @@ struct WhispererConfig : public BaseConfig {
     char    owmApiKey[MAX_PREF_STRING_LEN];   // OpenWeatherMap API key (leave empty to disable)
     char    owmCity[MAX_PREF_STRING_LEN];     // e.g. "Warsaw,PL"
     char    triggerMode[MAX_PREF_STRING_LEN]; // "classic" | "thermal"
+    int32_t xtalkRate;         // glass crosstalk compensation rate (Q9.7 MCPS); 0 = disabled
+    bool    xtalkCalibPending; // set via portal → run calibration on next normal boot
 };
 
 class WhispererPreferences : public BasePreferences {

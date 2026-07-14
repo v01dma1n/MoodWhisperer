@@ -39,6 +39,9 @@ char s_brightnessBuffer[4] = "7";
 // Similarly for fixed mood (stored as int * 100 for NVS portability).
 char s_moodBuffer[8] = "0";
 
+// Xtalk compensation rate (Q9.7 MCPS integer; 0 = disabled).
+char s_xtalkRateBuffer[8] = "0";
+
 void WhispererAccessPointManager::initializeFormFields() {
     BaseAccessPointManager::initializeFormFields();
 
@@ -50,6 +53,8 @@ void WhispererAccessPointManager::initializeFormFields() {
              (int)cfg.displayBrightness);
     snprintf(s_moodBuffer, sizeof(s_moodBuffer), "%d",
              (int)cfg.fixedMoodTimes100);
+    snprintf(s_xtalkRateBuffer, sizeof(s_xtalkRateBuffer), "%d",
+             (int)cfg.xtalkRate);
 
     _formFields.push_back(FormField{
         "brightness", "Display Brightness", false, VALIDATION_NONE,
@@ -88,6 +93,20 @@ void WhispererAccessPointManager::initializeFormFields() {
     _formFields.push_back(FormField{
         "owm_city", "OWM City (e.g. Warsaw,PL)", false, VALIDATION_NONE,
         PREF_STRING, { .str_pref = cfg.owmCity }, nullptr, 0,
+    });
+
+    _formFields.push_back(FormField{
+        "xtalk_calib",
+        "Calibrate glass crosstalk (point at open air, then save+reboot)",
+        false, VALIDATION_NONE,
+        PREF_BOOL, { .bool_pref = &cfg.xtalkCalibPending },
+        nullptr, 0,
+    });
+
+    _formFields.push_back(FormField{
+        "xtalk_rate", "Glass xtalk rate (0=off, raw Q9.7 value)", false,
+        VALIDATION_INTEGER, PREF_STRING,
+        { .str_pref = s_xtalkRateBuffer }, nullptr, 0,
     });
 
     // NOTE: After applyFormBody() runs, the app reads the buffers back into
