@@ -10,7 +10,7 @@
 #include "esp_timer.h"
 #include "esp_wifi.h"
 #include "sntp_client.h"
-#include "weather_client.h"
+#include "weather_manager.h"
 
 #include <algorithm>
 #include <cmath>
@@ -37,15 +37,14 @@ static void ledWifiEventHandler(void*, esp_event_base_t, int32_t, void*) {
 
 static char s_quoteBuffer[48] = "HELLO";
 
-static WeatherData s_weather             = {};
-static int64_t     s_weatherFetchedMs    = -(10LL * 60 * 1000);
-
 static float whisperer_getTemperature() {
-    return s_weather.valid ? s_weather.tempF : UNSET_VALUE;
+    WeatherData w = WhispererApp::getInstance().getWeather().getWeatherData();
+    return w.valid ? w.tempF : UNSET_VALUE;
 }
 
 static float whisperer_getHumidity() {
-    return s_weather.valid ? static_cast<float>(s_weather.humidity) : UNSET_VALUE;
+    WeatherData w = WhispererApp::getInstance().getWeather().getWeatherData();
+    return w.valid ? static_cast<float>(w.humidity) : UNSET_VALUE;
 }
 
 static float whisperer_refreshQuote() {
@@ -86,6 +85,7 @@ WhispererApp::WhispererApp()
     : _display(PT6315_GPIO_SCK, PT6315_GPIO_CS, PT6315_GPIO_MOSI, PT6315_SPI_HOST),
       _appPrefs(),
       _apManagerConcrete(_appPrefs),
+      _weatherManager(*this),
       _tof(TOF_I2C_PORT, TOF_I2C_SDA, TOF_I2C_SCL),
       _rtc(RTC_I2C_PORT, RTC_I2C_SDA, RTC_I2C_SCL, RTC_I2C_ADDR) {
     _displayManager = std::make_unique<DisplayManager>(_display);
@@ -206,16 +206,9 @@ void WhispererApp::loop() {
         }
     }
 
-    // Weather polling (every 10 min, only when OWM is configured and WiFi is up).
-    const auto& cfg = _appPrefs.config;
-    if (cfg.owmApiKey[0] != '\0' && cfg.owmCity[0] != '\0' &&
-        _fsmManager && _fsmManager->isInState("RUNNING_NORMAL")) {
-        int64_t nowMs = (int64_t)xTaskGetTickCount() * portTICK_PERIOD_MS;
-        if (nowMs - s_weatherFetchedMs >= 10LL * 60 * 1000) {
-            s_weatherFetchedMs = nowMs;
-            s_weather = fetchWeather(cfg.owmApiKey, cfg.owmCity);
-        }
-    }
+    // Weather polling — WeatherManager gates on isOkToRunScenes() and
+    // its own 15-minute interval.
+    _weatherManager.update();
 
     // Write NTP time back to DS1307 once on first sync.
     if (_rtcPresent && !_rtcSynced && timeAvail) {

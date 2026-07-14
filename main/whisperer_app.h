@@ -25,7 +25,7 @@
 #include <atomic>
 #include <memory>
 
-class WhispererApp : public BaseNtpClockApp {
+class WhispererApp : public BaseNtpClockApp, public virtual IWeatherClock {
 public:
     static WhispererApp& getInstance();
 
@@ -38,6 +38,7 @@ public:
     WhispererPreferences& getPrefs()      { return _appPrefs; }
     QuoteManager&         getQuoteManager() { return *_quotes; }
     MoodLeds&             getMoodLeds()   { return _moodLeds; }
+    WeatherManager&       getWeather()    { return _weatherManager; }
 
     // --- IBaseClock --------------------------------------------------------
     const char* getAppName()  const override { return APP_HOST_NAME; }
@@ -50,6 +51,10 @@ public:
 
     bool isOkToRunScenes() const override;
     bool hasRtcTime()     const override { return _rtcAvailable; }
+
+    // --- IWeatherClock -----------------------------------------------------
+    const char* getOwmApiKey() const override { return _appPrefs.config.owmApiKey; }
+    const char* getOwmCity()   const override { return _appPrefs.config.owmCity; }
     void activateAccessPoint() override;
     void formatTime(char* txt, unsigned txt_size,
                     const char* format, time_t now) override;
@@ -67,6 +72,7 @@ private:
 
     WhispererPreferences             _appPrefs;
     WhispererAccessPointManager      _apManagerConcrete;
+    WeatherManager                   _weatherManager;
 
     std::unique_ptr<MoodProvider>    _moodProvider;
     std::unique_ptr<QuoteManager>    _quotes;
