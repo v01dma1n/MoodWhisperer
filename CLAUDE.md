@@ -16,6 +16,17 @@ idf.py build
 idf.py -p /dev/ttyUSB0 flash
 timeout 45 idf.py -p /dev/ttyUSB0 monitor 2>&1 | tee /tmp/vfdw_monitor.log
 
+`idf.py monitor` needs an interactive TTY. From an agent shell use the
+capture script instead:
+
+python tools/serial_capture.py /dev/ttyUSB0 45 /tmp/vfdw_monitor.log
+python tools/serial_capture.py /dev/ttyUSB0 45 /tmp/vfdw_monitor.log --no-reset
+
+The default form pulses EN (hard reset) and captures the boot. Use
+--no-reset to eavesdrop on a boot already in progress — two resets
+within 10 s are a double reset and force AP mode, so back-to-back
+captures with reset will land you in the portal.
+
 Then read `/tmp/vfdw_monitor.log` and look for:
 - Compile errors — fix and rebuild.
 - `Guru Meditation Error` — parse the `---` decoded backtrace lines, match
@@ -44,22 +55,35 @@ This wipes WiFi credentials — the device will come up in AP mode
   no marketing words, no "comprehensive solution" phrasing.
 
 ## Known issues / in flight
-- Core 1 idle-task panic (PC=0, InstrFetchProhibited) — TWO STACK FIXES APPLIED.
-  Crash signature: PS.EXCM=1 (double exception), A1/A3 in IPC task memory,
-  _xt_lowint1 + _frxt_int_enter in registers, backtrace landing in idle task
-  frames (red herring from stale Xtensa window-chain saves).
-  Fix 1: CONFIG_FREERTOS_IDLE_TASK_STACKSIZE=4096 — IDLE1 had only 976 bytes
-  free in AP mode; WiFi level-1 interrupts on Core 1 could overflow it. Fixed
-  but did NOT eliminate the crash; crash still occurred after AP config save
-  (WiFi STA connect path), meaning a second culprit existed.
-  Fix 2: CONFIG_ESP_IPC_TASK_STACK_SIZE=4096 — ipc1 had only 1520 bytes free
-  (2048 total); WiFi STA-connect IPC calls pushed it past the limit. The
-  overflow corrupted adjacent memory and the next level-1 interrupt dispatched
-  through a zeroed handler → PC=0. Fix raises headroom to 3580 bytes free.
-  Pending validation: configure WiFi credentials through the portal and
-  verify the device survives the STA-connect boot.
 - DIG1 top-row annunciator bit mapping is placeholder (marked TODO in
   sony_vfd_pt6315.cpp). Needs bench bit-walk.
+- NTP timeout with no DS1307 fitted drops the FSM into AP_MODE even when
+  WiFi is up (clock_fsm_manager.cpp, NTP_SYNC case). Bites bench boards
+  without the RTC; consider RUNNING_NORMAL with unsynced time + background
+  NTP retry instead.
+- WiFiConnect() issues esp_wifi_connect() twice per attempt (STA_START
+  handler + retry loop in components/esp32_wifi/src/wifi_connector.cpp).
+  Harmless in testing but worth deduplicating.
+- Home-network context (2026-07-14): the irhome RT-AC3200 refuses 802.11
+  auth (status 1, Broadcom IE) to ALL new 2.4 GHz clients — suspected nvram
+  exhaustion, masked by its nightly 4 AM reboot. Bench work uses the irlab
+  AP (NETGEAR, 2.4 GHz only, AP mode on the main LAN). reason=202 against
+  irhome is the router, not this firmware.
+
+## Resolved (kept for crash-signature reference)
+- Core 1 idle-task panic (PC=0, InstrFetchProhibited): PS.EXCM=1, A1/A3 in
+  IPC task memory, backtrace in idle-task frames (red herring from stale
+  Xtensa window-chain saves). Fixed by CONFIG_FREERTOS_IDLE_TASK_STACKSIZE=4096
+  and CONFIG_ESP_IPC_TASK_STACK_SIZE=4096. Validated 2026-07-14 across many
+  portal-save/STA-connect cycles.
+- Portal saves silently persisted loglevel=ERROR and dropped brightness/mood
+  inputs: form shuttle buffers were smaller than the MAX_PREF_STRING_LEN
+  write that applyFormBody() performs; the overflow zeroed cJSON global_hooks
+  and s_logLevelBuffer in .data. All str_pref buffers must be
+  MAX_PREF_STRING_LEN bytes.
+- Sticky AP mode (one failed boot forced AP forever): the double-reset flag
+  now clears after a 10 s window or on entering AP mode, not only on
+  RUNNING_NORMAL.
 
 ## Do not
 - Don't propose speculative "maybe this helps" changes. Make one change
