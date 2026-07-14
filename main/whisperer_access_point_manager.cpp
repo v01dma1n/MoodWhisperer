@@ -29,18 +29,23 @@ static const PrefSelectOption s_brightnessOptions[] = {
 static const int s_numBrightnessOptions =
     sizeof(s_brightnessOptions) / sizeof(s_brightnessOptions[0]);
 
-// Brightness round-trips through a small string buffer because our
+// Brightness round-trips through a string buffer because our
 // PREF_SELECT form type stores a string. applyFormBody() will atoi() it
 // back into config.displayBrightness before save.
 // External linkage so WhispererPreferences::putPreferences() can pick
 // the buffer up on the way out.
-char s_brightnessBuffer[4] = "7";
+// All three buffers MUST be MAX_PREF_STRING_LEN bytes: applyFormBody()
+// strncpy's MAX_PREF_STRING_LEN-1 bytes (zero-padded) into every
+// str_pref and writes index MAX_PREF_STRING_LEN-1. Smaller buffers get
+// overflowed — this zeroed cJSON's global_hooks and s_logLevelBuffer
+// in .data on every portal save.
+char s_brightnessBuffer[MAX_PREF_STRING_LEN] = "7";
 
 // Similarly for fixed mood (stored as int * 100 for NVS portability).
-char s_moodBuffer[8] = "0";
+char s_moodBuffer[MAX_PREF_STRING_LEN] = "0";
 
 // Xtalk compensation rate (Q9.7 MCPS integer; 0 = disabled).
-char s_xtalkRateBuffer[8] = "0";
+char s_xtalkRateBuffer[MAX_PREF_STRING_LEN] = "0";
 
 void WhispererAccessPointManager::initializeFormFields() {
     BaseAccessPointManager::initializeFormFields();
