@@ -176,9 +176,12 @@ void WhispererApp::setup() {
             _appPrefs.putPreferences();
             LOGINF("Crosstalk calibration complete — rate %u saved to NVS", (unsigned)rate);
         }
-        if (cfg.xtalkRate > 0) {
-            _tof.applyXtalkCompensation((uint16_t)cfg.xtalkRate);
-        }
+        // Always write the compensation register — including zero to
+        // explicitly disable it. The sensor survives ESP soft reboots
+        // with registers intact, so skipping the write here left a
+        // previous boot's compensation silently active (max-distance
+        // readings with logs claiming compensation was off).
+        _tof.applyXtalkCompensation((uint16_t)cfg.xtalkRate);
         _tof.startContinuous();
         LOGINF("VL53L0X distance sensor started");
     } else {
@@ -333,7 +336,18 @@ void WhispererApp::pollDistance() {
 void WhispererApp::onDistanceReading(int mm) {
     // Ignore readings below 60 mm — spurious glass-reflection returns that
     // would otherwise anchor the EMA baseline to the cover-glass distance.
-    if (mm < 60 || mm > 2000) return;
+    if (mm >= 0 && mm < 60) return;
+
+    // Out of range / no target (the 8190/8191 sentinel, -1 timeout, or
+    // beyond 2 m). In geiger mode, ease the breathing back to calm —
+    // otherwise walking out of range froze the tubes at the last (and
+    // therefore most nervous) frequency.
+    if (mm < 0 || mm > 2000) {
+        if (std::strcmp(_appPrefs.config.triggerMode, "geiger") == 0) {
+            onGeigerNoTarget();
+        }
+        return;
+    }
 
     if (std::strcmp(_appPrefs.config.triggerMode, "thermal") == 0) {
         onDistanceReadingThermal(mm);
@@ -428,19 +442,31 @@ void WhispererApp::onDistanceReadingThermal(int mm) {
     }
 }
 
+// Geiger breathing frequency range — shared by the valid-reading and
+// no-target paths.
+static constexpr float GEIGER_FREQ_FAR      = 0.2f;   // calm breathe at no movement
+static constexpr float GEIGER_FREQ_CLOSE    = 5.0f;   // nervous Geiger at max deviation
+static constexpr float GEIGER_MAX_DEVIATION = 400.0f; // mm of movement = full nervousness
+
+void WhispererApp::onGeigerNoTarget() {
+    if (!_geigerRunning) return;
+    // Exponential ease toward calm: at ~10 Hz polling this settles in a
+    // couple of seconds, reading as the tube relaxing rather than the
+    // LEDs dying mid-motion.
+    _geigerFreqHz += (GEIGER_FREQ_FAR - _geigerFreqHz) * 0.05f;
+    _moodLeds.setGeigerFrequency(_geigerFreqHz);
+}
+
 void WhispererApp::onDistanceReadingGeiger(int mm) {
     // Frequency maps deviation from the adaptive ambient baseline (not absolute
     // distance), so the mode works correctly in confined spaces like under a desk
     // where the ceiling is always nearby. The baseline drifts slowly with the
     // environment via the same EMA used for trigger detection.
-    static constexpr float FREQ_FAR        = 0.2f;  // calm breathe at no movement
-    static constexpr float FREQ_CLOSE      = 5.0f;  // nervous Geiger at max deviation
-    static constexpr float MAX_DEVIATION   = 400.0f; // mm of movement = full nervousness
-
     if (_lastStableDistanceMm >= 0) {
         float deviation = (float)std::abs(mm - _lastStableDistanceMm);
-        float t         = std::min(1.0f, deviation / MAX_DEVIATION);
-        _moodLeds.setGeigerFrequency(FREQ_FAR + (FREQ_CLOSE - FREQ_FAR) * t);
+        float t         = std::min(1.0f, deviation / GEIGER_MAX_DEVIATION);
+        _geigerFreqHz = GEIGER_FREQ_FAR + (GEIGER_FREQ_CLOSE - GEIGER_FREQ_FAR) * t;
+        _moodLeds.setGeigerFrequency(_geigerFreqHz);
     }
 
     if (_inQuoteMode) return;

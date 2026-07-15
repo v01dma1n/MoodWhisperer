@@ -335,6 +335,12 @@ uint16_t Vl53l0xDriver::performXtalkCalibration(int samples) {
     // Fire single-shot measurements with no target present (open air or
     // black absorber at ≥500 mm).  The averaged peak signal rate is the
     // glass-reflection crosstalk that hardware subtraction will remove.
+    //
+    // Measure raw: the sensor keeps register state across ESP soft
+    // reboots (XSHUT is not toggled), so whatever compensation a
+    // previous boot applied would silently corrupt this measurement.
+    writeReg16(Reg::CROSSTALK_COMPENSATION_PEAK_RATE, 0);
+
     uint32_t sum   = 0;
     int      valid = 0;
 

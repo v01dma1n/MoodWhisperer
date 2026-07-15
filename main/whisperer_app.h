@@ -101,11 +101,13 @@ private:
 
     // Geiger Proximity Pulse state.
     bool  _geigerRunning    = false;  // true once breathing has started
+    float _geigerFreqHz     = 0.2f;   // last frequency handed to MoodLeds
 
     void refreshMoodProvider();
     void onDistanceReading(int mm);
     void onDistanceReadingThermal(int mm);
     void onDistanceReadingGeiger(int mm);
+    void onGeigerNoTarget();
     void triggerDistanceQuote(int distanceMm);
     static float moodFromDistance(int mm);
 
