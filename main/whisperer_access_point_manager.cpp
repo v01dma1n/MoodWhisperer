@@ -47,8 +47,16 @@ char s_moodBuffer[MAX_PREF_STRING_LEN] = "0";
 // Xtalk compensation rate (Q9.7 MCPS integer; 0 = disabled).
 char s_xtalkRateBuffer[MAX_PREF_STRING_LEN] = "0";
 
+// True once the portal form has been built this session. Gates the
+// buffer→config re-sync in WhispererPreferences::putPreferences() so
+// programmatic saves (e.g. the xtalk calibration path) don't get their
+// numeric fields clobbered by the buffers' static initializers.
+bool s_portalFieldsActive = false;
+
 void WhispererAccessPointManager::initializeFormFields() {
     BaseAccessPointManager::initializeFormFields();
+
+    s_portalFieldsActive = true;
 
     auto& cfg = static_cast<WhispererPreferences&>(_prefs).config;
 

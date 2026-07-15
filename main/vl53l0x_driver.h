@@ -14,6 +14,13 @@ public:
     void     startContinuous();   // back-to-back measurements, no inter-measurement period
     int      readRangeMm();       // blocks until next sample ready; -1 on timeout/error
 
+    // Diagnostics captured by the last readRangeMm() call. Status is the
+    // raw RESULT_RANGE_STATUS byte (device status in bits [6:3], 0xB = valid);
+    // signal rate is Q9.7 MCPS — behind cover glass this shows how much of
+    // the return is glass reflection vs target.
+    uint8_t  lastRangeStatus()   const { return _lastStatus; }
+    uint16_t lastSignalRateQ97() const { return _lastSignalRate; }
+
     // Glass crosstalk calibration.  Call after init(), before startContinuous().
     // Fires `samples` single-shot measurements and returns the averaged peak signal
     // rate (Q9.7 MCPS) — the glass reflection the sensor sees with no target present.
@@ -31,6 +38,8 @@ private:
     int        _sda, _scl;
     uint8_t    _addr;
     uint8_t    _stopVariable = 0;  // saved during init, restored before each burst
+    uint8_t    _lastStatus     = 0;
+    uint16_t   _lastSignalRate = 0;
 
     void     writeReg(uint8_t reg, uint8_t val);
     void     writeReg16(uint8_t reg, uint16_t val);

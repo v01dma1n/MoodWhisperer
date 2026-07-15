@@ -1,5 +1,6 @@
 #include "whisperer_preferences.h"
 
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
@@ -12,6 +13,15 @@ static constexpr const char* KEY_OWM_CITY     = "owm_city";
 static constexpr const char* KEY_TRIGGER_MODE  = "trigger_mode";
 static constexpr const char* KEY_XTALK_RATE    = "xtalk_rate";
 static constexpr const char* KEY_XTALK_CALIB   = "xtalk_calib";
+
+// Declared in whisperer_access_point_manager.cpp; used to shuttle
+// numeric fields through the string-typed form plumbing. The bool is
+// set once the portal form has been built — only then do the buffers
+// hold user input worth parsing back.
+extern char s_brightnessBuffer[];
+extern char s_moodBuffer[];
+extern char s_xtalkRateBuffer[];
+extern bool s_portalFieldsActive;
 
 WhispererPreferences::WhispererPreferences()
     : BasePreferences(config) {
@@ -60,29 +70,25 @@ void WhispererPreferences::getPreferences() {
     closeNvs();
 }
 
-// Declared in whisperer_access_point_manager.cpp; used to shuttle
-// numeric fields through the string-typed form plumbing.
-extern char s_brightnessBuffer[];
-extern char s_moodBuffer[];
-extern char s_xtalkRateBuffer[];
-
 void WhispererPreferences::putPreferences() {
-    // Re-sync buffers -> numeric fields if the AP form touched them.
-    // Safe no-ops when invoked outside the portal because the buffers
-    // stay at their last-loaded values.
-    if (s_brightnessBuffer[0] != '\0') {
+    // Re-sync buffers -> numeric fields, but ONLY when the portal form
+    // was actually built this session. Outside the portal the buffers
+    // hold their static initializers, and parsing them here clobbered
+    // programmatic changes — the xtalk calibration path saved its rate
+    // and the next boot read back 0.
+    if (s_portalFieldsActive && s_brightnessBuffer[0] != '\0') {
         int b = atoi(s_brightnessBuffer);
         if (b < 0) b = 0;
         if (b > 7) b = 7;
         config.displayBrightness = b;
     }
-    if (s_moodBuffer[0] != '\0') {
+    if (s_portalFieldsActive && s_moodBuffer[0] != '\0') {
         int m = atoi(s_moodBuffer);
         if (m < -100) m = -100;
         if (m >  100) m =  100;
         config.fixedMoodTimes100 = m;
     }
-    if (s_xtalkRateBuffer[0] != '\0') {
+    if (s_portalFieldsActive && s_xtalkRateBuffer[0] != '\0') {
         int r = atoi(s_xtalkRateBuffer);
         if (r < 0)     r = 0;
         if (r > 65535) r = 65535;

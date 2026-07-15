@@ -80,3 +80,7 @@ CONFIG_FREERTOS_IDLE_TASK_STACKSIZE=4096
 # We use C++17 features (std::unique_ptr, structured bindings, etc.).
 CONFIG_COMPILER_CXX_EXCEPTIONS=n
 CONFIG_COMPILER_CXX_RTTI=n
+
+# Compile debug-level logging in (runtime default stays INFO; the app
+# raises the NTPC tag to DEBUG at boot when the portal log level says so).
+CONFIG_LOG_MAXIMUM_LEVEL_DEBUG=y

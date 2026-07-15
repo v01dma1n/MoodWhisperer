@@ -324,6 +324,8 @@ int Vl53l0xDriver::readRangeMm() {
         vTaskDelay(1);
     }
     // RESULT_RANGE_STATUS+10 = 0x1E gives range in mm (big-endian).
+    _lastStatus     = readReg(Reg::RESULT_RANGE_STATUS);
+    _lastSignalRate = readReg16(Reg::RESULT_PEAK_SIGNAL_RATE);
     uint16_t mm = readReg16(0x1E);
     writeReg(Reg::SYSTEM_INTERRUPT_CLEAR, 0x01);
     return mm;
@@ -368,7 +370,21 @@ uint16_t Vl53l0xDriver::performXtalkCalibration(int samples) {
 }
 
 void Vl53l0xDriver::applyXtalkCompensation(uint16_t rateMcps) {
-    writeReg16(Reg::CROSSTALK_COMPENSATION_PEAK_RATE, rateMcps);
-    LOGINF("Xtalk compensation %s (rate %u Q9.7 MCPS)",
-           rateMcps ? "enabled" : "disabled", (unsigned)rateMcps);
+    // Register 0x20 is FixPoint 3.13 (ST API: FIXPOINT1616TOFIXPOINT313),
+    // not Q9.7 like the RESULT_PEAK_SIGNAL_RATE we calibrate from. Convert
+    // (<<6) and clamp: 3.13 tops out at ~8 MCPS — cover glass reflecting
+    // more than that cannot be fully compensated in hardware and needs an
+    // optical fix (light-barrier gasket between sensor and glass).
+    uint32_t q313 = (uint32_t)rateMcps << 6;
+    if (q313 > 0xFFFF) {
+        LOGERR("Xtalk %u Q9.7 (%.1f MCPS) exceeds the ~8 MCPS compensation "
+               "ceiling — clamping. Ranging through this glass will stay "
+               "degraded until the optical path improves.",
+               (unsigned)rateMcps, rateMcps / 128.0f);
+        q313 = 0xFFFF;
+    }
+    writeReg16(Reg::CROSSTALK_COMPENSATION_PEAK_RATE, (uint16_t)q313);
+    LOGINF("Xtalk compensation %s (%.1f MCPS, reg=0x%04X)",
+           rateMcps ? "enabled" : "disabled",
+           rateMcps / 128.0f, (unsigned)q313);
 }

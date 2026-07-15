@@ -311,6 +311,19 @@ void WhispererApp::pollDistance() {
         return;
     }
     int mm = _tof.readRangeMm();
+
+    // ~Every 3 s at DEBUG: raw reading + device status + return signal
+    // rate, for diagnosing behind-glass behavior (glass reflection shows
+    // up as a huge signal rate pinned at a short distance).
+    static int s_diagCounter = 0;
+    if (++s_diagCounter >= 30) {
+        s_diagCounter = 0;
+        LOGDBG("ToF diag: %d mm, status 0x%02X, signal %u Q9.7 (%.1f MCPS)",
+               mm, _tof.lastRangeStatus(),
+               (unsigned)_tof.lastSignalRateQ97(),
+               _tof.lastSignalRateQ97() / 128.0f);
+    }
+
     onDistanceReading(mm);
     // readRangeMm already blocked ~33 ms waiting for the sample; a small
     // extra delay keeps worst-case poll rate around 10 Hz.
