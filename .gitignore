@@ -30,6 +30,7 @@ Makefile
 # VS Code (keep shared settings, ignore user-specific)
 .vscode/c_cpp_properties.json
 .vscode/launch.json
+.vscode/settings.json
 .vscode/*.log
 
 # JetBrains IDEs
