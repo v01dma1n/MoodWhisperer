@@ -11,13 +11,24 @@
 #include "driver/spi_common.h"
 #include "driver/i2c.h"
 
-// Sony HT-CT550W CN803 <-> ESP32-WROOM wiring.
+// Sony HT-CT550W CN803 <-> ESP32-WROOM wiring. Kept for reference /
+// rollback even though WhispererApp now drives the LGL glass below —
+// both displays are write-only 3-wire panels, so swapping the glass on
+// the bench just means re-terminating these same three GPIOs.
 constexpr int PT6315_GPIO_SCK  = 18;  // FL_CLK  — VSPI SCK
 constexpr int PT6315_GPIO_MOSI = 23;  // FL_DATA — VSPI MOSI
 constexpr int PT6315_GPIO_CS   =  5;  // FL_CS   — VSPI SS
 
 // VSPI on the classic ESP32 = SPI3_HOST in IDF >= 4.4.
 constexpr spi_host_device_t PT6315_SPI_HOST = SPI3_HOST;
+
+// LGL Studio VFD (bit-banged, no SPI peripheral) — same three physical
+// wires as the Sony panel above, re-mapped to the driver's CS/CLK/SDI
+// naming rather than SPI's CS/SCK/MOSI naming.
+constexpr int LGL_VFD_GPIO_CS       = 23;  // was PT6315 MOSI wire
+constexpr int LGL_VFD_GPIO_CLK      =  5;  // was PT6315 CS wire
+constexpr int LGL_VFD_GPIO_SDI      = 18;  // was PT6315 SCK wire
+constexpr int LGL_VFD_NUM_DIGITS    = 16;
 
 // Hold this GPIO low for 3 s to force AP mode at any time. -1 disables.
 // GPIO 0 = the BOOT button on the ESP32-WROOM dev board (active-low,

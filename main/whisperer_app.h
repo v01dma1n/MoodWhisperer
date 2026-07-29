@@ -1,7 +1,7 @@
 // whisperer_app.h — the MoodWhisperer application.
 //
 // Mirrors GustavClock's GustavClockApp in structure: one class that
-// inherits BaseNtpClockApp, owns a DispDriverPT6315 and a DisplayManager,
+// inherits BaseNtpClockApp, owns a DispDriverLglVfd and a DisplayManager,
 // and supplies the IBaseClock implementations the engine wants.
 //
 // Additions over GustavClock:
@@ -9,13 +9,16 @@
 //   * VL53L0X distance sensor — triggers quotes on movement; maps
 //     distance to mood (<1 m gloomy, >1 m upbeat).
 //   * MoodLeds — two WS2812 LEDs that glow amber when a quote plays.
+//
+// Display: was the Sony HT-CT550W PT6315 panel, now an LGL Studio VFD
+// (brighter glass) wired to the same three GPIOs — see vfd_hardware_map.h.
 
 #pragma once
 
 #include "ESP32NTPClock.h"
 #include "quote_manager.h"
 
-#include "disp_driver_pt6315.h"
+#include "disp_driver_lgl_vfd.h"
 #include "whisperer_preferences.h"
 #include "whisperer_access_point_manager.h"
 #include "vl53l0x_driver.h"
@@ -67,7 +70,7 @@ private:
 
     static constexpr const char* APP_HOST_NAME = "mood-whisperer";
 
-    DispDriverPT6315                 _display;
+    DispDriverLglVfd                 _display;
     std::unique_ptr<DisplayManager>  _displayManager;
 
     WhispererPreferences             _appPrefs;
