@@ -58,28 +58,23 @@ static float whisperer_refreshQuote() {
 
 static float whisperer_timeDataStub() { return UNSET_VALUE; }
 
-// Format strings carry their own leading spaces to roughly center each
-// scene's text on a 16-cell display (the LGL glass; the old Sony PT6315
-// was narrower, so this padding was barely noticeable there). Fixed-width
-// scenes (Time, Date, Year) center exactly; variable-width ones (Temp,
-// Hum) are centered for the common 2-3-digit case only.
-//
 // dots_with_previous is false everywhere now: that flag strips a literal
 // '.' out of the text and routes it to a decimal-point *overlay* bit,
 // which only segment displays like the old PT6315 have. The LGL glass
 // has no such bit, so with the flag on the dot just vanished; with it
 // off, '.' renders as its own character cell instead.
 static const DisplayScene s_scenePlaylist[] = {
-    { "Time",  "    %-H:%M:%S", SLOT_MACHINE, false, true,  10000, 150, 40, &whisperer_timeDataStub },
-    { "Date",  "     %b %d",    MATRIX,       false, false, 10000, 300, 150, &whisperer_timeDataStub },
-    { "Time",  "    %-H:%M:%S", SLOT_MACHINE, false, true,  10000, 150,  40, &whisperer_timeDataStub },
-    { "Temp",  "     %.1f F",   MATRIX,       false, false,  7000, 300, 150, &whisperer_getTemperature },
-    { "Time",  "    %-H:%M:%S", SLOT_MACHINE, false, true,  10000, 150,  40, &whisperer_timeDataStub },
-    { "Hum",   "     %.0f PCT", MATRIX,       false, false,  7000, 300, 150, &whisperer_getHumidity },
-    { "Time",  "    %-H:%M:%S", SLOT_MACHINE, false, true,  10000, 150, 40, &whisperer_timeDataStub },
-    { "Year",  "   %m/%d/%Y",   STATIC_TEXT,  false, false, 10000,   0,  0, &whisperer_timeDataStub },
-    { "Time",  "    %-H:%M:%S", SLOT_MACHINE, false, true,  10000, 150, 40, &whisperer_timeDataStub },
-    { "Year",  "   %Y-%m-%d",   STATIC_TEXT,  false, false, 10000,   0,  0, &whisperer_timeDataStub },
+    //         "1234567890123456"
+    { "Time",  "    %-H:%M:%S", SLIDER,       false, true,  10000,  55,  18, &whisperer_timeDataStub },
+    { "Date",  "   %b %d, %Y",  SPLIT_FLAP,   false, false, 10000,  35,   0, &whisperer_timeDataStub },
+    { "Time",  "    %-H:%M:%S", SLIDER,       false, true,  10000,  55,  18, &whisperer_timeDataStub },
+    { "Temp",  "     %.1f F",   MATRIX,       false, false,  7000, 180, 150, &whisperer_getTemperature },
+    { "Time",  "    %-H:%M:%S", SLIDER,       false, true,  10000,  55,  18, &whisperer_timeDataStub },
+    { "Hum",   "     %.0f PCT", MATRIX,       false, false,  7000, 180, 150, &whisperer_getHumidity },
+    { "Time",  "    %-H:%M:%S", SLIDER,       false, true,  10000,  55,  18, &whisperer_timeDataStub },
+    { "Date",  "   %m/%d/%Y",   SLOT_MACHINE, false, false, 10000, 3000, 40, &whisperer_timeDataStub },
+    { "Time",  "    %-H:%M:%S", SLIDER,       false, true,  10000,  55,  18, &whisperer_timeDataStub },
+    { "Date",  "   %Y-%m-%d",   SLOT_MACHINE, false, false, 10000, 3000, 40, &whisperer_timeDataStub },
 };
 static const int s_numScenes = sizeof(s_scenePlaylist) / sizeof(DisplayScene);
 
